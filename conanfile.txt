@@ -1,0 +1,6 @@
+[requires]
+asio/1.13.0@bincrafters/stable
+
+[generators]
+cmake_find_package
+cmake_paths
