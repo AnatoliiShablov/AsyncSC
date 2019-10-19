@@ -31,7 +31,8 @@ class package {
                                    static_cast<uint32_t>(len_buf[3]) << UINT32_C(0);
             std::vector<std::byte> buffer(pack_length);
             asio::async_read(s, asio::buffer(buffer),
-                             std::bind(&package::async_save_package, pack, buffer, handler, std::placeholders::_1));
+                             std::bind(&package::async_save_package<ReadHandler>, pack, buffer, handler,
+                                       std::placeholders::_1));
         } else {
             handler(error);
         }
@@ -157,7 +158,8 @@ public:
     static void async_read(AsyncReadStream &s, package &pack, ReadHandler &&handler) {
         std::array<std::byte, 4> len_buf{};
         asio::async_read(s, asio::buffer(len_buf),
-                         std::bind(&package::async_read_package, s, pack, len_buf, handler, std::placeholders::_1));
+                         std::bind(&package::async_read_package<AsyncReadStream, ReadHandler>, s, pack, len_buf,
+                                   handler, std::placeholders::_1));
     }
 
     template<typename AsyncWriteStream, typename WriteHandler>

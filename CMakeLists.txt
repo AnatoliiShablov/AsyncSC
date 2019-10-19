@@ -21,12 +21,18 @@ add_library(server_tcl_lib
 target_link_libraries(server_tcl_lib asio::asio package_lib)
 target_include_directories(server_tcl_lib PUBLIC ${ASIO_INCLUDE_DIRS})
 
+add_library(client_tcp_lib
+        src/lib/tcp_client.h
+        src/lib/tcp_client.cpp)
+target_link_libraries(client_tcp_lib asio::asio package_lib)
+target_include_directories(client_tcp_lib PUBLIC ${ASIO_INCLUDE_DIRS})
+
 
 add_executable(AsyncServer src/server.cpp)
-target_link_libraries(AsyncServer server_tcl_lib package_lib asio::asio)
+target_link_libraries(AsyncServer asio::asio package_lib server_tcl_lib)
 target_include_directories(AsyncServer PUBLIC ${ASIO_INCLUDE_DIRS})
 
 
 add_executable(AsyncClient src/client.cpp)
-target_link_libraries(AsyncClient asio::asio sfml-system sfml-window sfml-graphics sfml-network package_lib)
+target_link_libraries(AsyncClient asio::asio package_lib client_tcp_lib sfml-system sfml-window sfml-graphics sfml-network )
 target_include_directories(AsyncClient PUBLIC ${ASIO_INCLUDE_DIRS} ${SFML_INCLUDE_DIR})
