@@ -7,7 +7,6 @@ execute_process(COMMAND conan install ${CMAKE_CURRENT_SOURCE_DIR} WORKING_DIRECT
 include(${CMAKE_CURRENT_BINARY_DIR}/conan_paths.cmake)
 
 find_package(asio REQUIRED)
-find_package(SFML COMPONENTS network graphics window system REQUIRED)
 
 add_library(package_lib
         src/lib/package.h
@@ -34,5 +33,5 @@ target_include_directories(AsyncServer PUBLIC ${ASIO_INCLUDE_DIRS})
 
 
 add_executable(AsyncClient src/client.cpp)
-target_link_libraries(AsyncClient asio::asio package_lib client_tcp_lib sfml-system sfml-window sfml-graphics sfml-network )
-target_include_directories(AsyncClient PUBLIC ${ASIO_INCLUDE_DIRS} ${SFML_INCLUDE_DIR})
+target_link_libraries(AsyncClient asio::asio package_lib client_tcp_lib)
+target_include_directories(AsyncClient PUBLIC ${ASIO_INCLUDE_DIRS})

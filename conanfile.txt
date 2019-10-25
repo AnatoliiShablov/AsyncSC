@@ -1,6 +1,5 @@
 [requires]
 asio/1.13.0@bincrafters/stable
-sfml/2.5.1@bincrafters/stable
 
 [generators]
 cmake_find_package
