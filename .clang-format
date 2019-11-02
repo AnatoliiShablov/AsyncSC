@@ -7,7 +7,7 @@ AllowShortIfStatementsOnASingleLine: false
 AllowShortFunctionsOnASingleLine:    Inline
 AllowShortLoopsOnASingleLine:        false
 BreakConstructorInitializers:        BeforeComma
-ColumnLimit:                         120
+ColumnLimit:                         128
 IndentCaseLabels:                    false
 SpaceBeforeInheritanceColon:         false
 TabWidth:                            4

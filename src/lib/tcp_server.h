@@ -40,8 +40,7 @@ class tcp_server {
 
     void start_read(uint32_t id) {
         package pack;
-        package::async_read(*ui_sock[id], pack,
-                            std::bind(&tcp_server::read_handler, this, id, pack, std::placeholders::_1));
+        package::async_read(*ui_sock[id], pack, std::bind(&tcp_server::read_handler, this, id, pack, std::placeholders::_1));
     }
 
     void start_write(uint32_t id) {

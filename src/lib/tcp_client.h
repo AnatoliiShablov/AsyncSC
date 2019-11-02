@@ -16,8 +16,7 @@ class tcp_client {
 
     void start_read() {
         package pack;
-        package::async_read(server_socket, pack,
-                            std::bind(&tcp_client::read_handler, this, pack, std::placeholders::_1));
+        package::async_read(server_socket, pack, std::bind(&tcp_client::read_handler, this, pack, std::placeholders::_1));
     }
 
     void start_write() {
@@ -25,8 +24,7 @@ class tcp_client {
         if (is_writing || tasks.empty()) {
             return;
         }
-        package::async_write(server_socket, tasks.front(),
-                             std::bind(&tcp_client::write_handler, this, std::placeholders::_1));
+        package::async_write(server_socket, tasks.front(), std::bind(&tcp_client::write_handler, this, std::placeholders::_1));
     }
 
     void read_handler(package &pack, asio::error_code const &error) {

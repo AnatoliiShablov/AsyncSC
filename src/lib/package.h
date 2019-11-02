@@ -40,7 +40,11 @@ size_t header_deserializer(std::byte *input, header &head) {
     head.size = static_cast<uint32_t>(input[0]) << UINT32_C(24) | static_cast<uint32_t>(input[1]) << UINT32_C(16) |
                 static_cast<uint32_t>(input[2]) << UINT32_C(8) | static_cast<uint32_t>(input[3]) << UINT32_C(0);
 
-    head.type = static_cast<package_type>(input[4]);
+    auto type = static_cast<uint8_t>(input[4]);
+    if (type > 2) {
+        return 0;
+    }
+    head.type = static_cast<package_type>(type);
 
     return sizeof(header);
 }
@@ -88,12 +92,10 @@ size_t message_serializer(std::byte *output, message const &package) {
 }
 
 size_t message_deserializer(std::byte *input, message &package) {
-    uint32_t name_length =
-        static_cast<uint32_t>(input[0]) << UINT32_C(24) | static_cast<uint32_t>(input[1]) << UINT32_C(16) |
-        static_cast<uint32_t>(input[2]) << UINT32_C(8) | static_cast<uint32_t>(input[3]) << UINT32_C(0);
-    uint32_t text_length =
-        static_cast<uint32_t>(input[4]) << UINT32_C(24) | static_cast<uint32_t>(input[5]) << UINT32_C(16) |
-        static_cast<uint32_t>(input[6]) << UINT32_C(8) | static_cast<uint32_t>(input[7]) << UINT32_C(0);
+    uint32_t name_length = static_cast<uint32_t>(input[0]) << UINT32_C(24) | static_cast<uint32_t>(input[1]) << UINT32_C(16) |
+                           static_cast<uint32_t>(input[2]) << UINT32_C(8) | static_cast<uint32_t>(input[3]) << UINT32_C(0);
+    uint32_t text_length = static_cast<uint32_t>(input[4]) << UINT32_C(24) | static_cast<uint32_t>(input[5]) << UINT32_C(16) |
+                           static_cast<uint32_t>(input[6]) << UINT32_C(8) | static_cast<uint32_t>(input[7]) << UINT32_C(0);
     uint32_t hash = static_cast<uint32_t>(input[8]) << UINT32_C(24) | static_cast<uint32_t>(input[9]) << UINT32_C(16) |
                     static_cast<uint32_t>(input[10]) << UINT32_C(8) | static_cast<uint32_t>(input[11]) << UINT32_C(0);
 
@@ -144,12 +146,11 @@ size_t sign_in_serializer(std::byte *output, sign_in const &package) {
 }
 
 size_t sign_in_deserializer(std::byte *input, sign_in &package) {
-    uint32_t name_length =
-        static_cast<uint32_t>(input[0]) << UINT32_C(24) | static_cast<uint32_t>(input[1]) << UINT32_C(16) |
-        static_cast<uint32_t>(input[2]) << UINT32_C(8) | static_cast<uint32_t>(input[3]) << UINT32_C(0);
-    uint32_t password_length =
-        static_cast<uint32_t>(input[4]) << UINT32_C(24) | static_cast<uint32_t>(input[5]) << UINT32_C(16) |
-        static_cast<uint32_t>(input[6]) << UINT32_C(8) | static_cast<uint32_t>(input[7]) << UINT32_C(0);
+    uint32_t name_length = static_cast<uint32_t>(input[0]) << UINT32_C(24) | static_cast<uint32_t>(input[1]) << UINT32_C(16) |
+                           static_cast<uint32_t>(input[2]) << UINT32_C(8) | static_cast<uint32_t>(input[3]) << UINT32_C(0);
+    uint32_t password_length = static_cast<uint32_t>(input[4]) << UINT32_C(24) |
+                               static_cast<uint32_t>(input[5]) << UINT32_C(16) |
+                               static_cast<uint32_t>(input[6]) << UINT32_C(8) | static_cast<uint32_t>(input[7]) << UINT32_C(0);
 
     package.name.resize(name_length);
     package.password.resize(password_length);
@@ -198,12 +199,11 @@ size_t sign_up_serializer(std::byte *output, sign_up const &package) {
 }
 
 size_t sign_up_deserializer(std::byte *input, sign_up &package) {
-    uint32_t name_length =
-        static_cast<uint32_t>(input[0]) << UINT32_C(24) | static_cast<uint32_t>(input[1]) << UINT32_C(16) |
-        static_cast<uint32_t>(input[2]) << UINT32_C(8) | static_cast<uint32_t>(input[3]) << UINT32_C(0);
-    uint32_t password_length =
-        static_cast<uint32_t>(input[4]) << UINT32_C(24) | static_cast<uint32_t>(input[5]) << UINT32_C(16) |
-        static_cast<uint32_t>(input[6]) << UINT32_C(8) | static_cast<uint32_t>(input[7]) << UINT32_C(0);
+    uint32_t name_length = static_cast<uint32_t>(input[0]) << UINT32_C(24) | static_cast<uint32_t>(input[1]) << UINT32_C(16) |
+                           static_cast<uint32_t>(input[2]) << UINT32_C(8) | static_cast<uint32_t>(input[3]) << UINT32_C(0);
+    uint32_t password_length = static_cast<uint32_t>(input[4]) << UINT32_C(24) |
+                               static_cast<uint32_t>(input[5]) << UINT32_C(16) |
+                               static_cast<uint32_t>(input[6]) << UINT32_C(8) | static_cast<uint32_t>(input[7]) << UINT32_C(0);
 
     package.name.resize(name_length);
     package.password.resize(password_length);
@@ -316,12 +316,9 @@ private:
 
 class package_reciever {
 public:
-    package_reciever()
-        : success_{}, error_{}, buffer_{}, offset_{0}, header_{}, state_{package_state::header_transfering} {}
+    package_reciever() : success_{}, error_{}, buffer_{}, offset_{0}, header_{}, state_{package_state::header_transfering} {}
 
-    void on_success(std::function<void(std::variant<message, sign_in, sign_up> &&)> success) {
-        success_ = std::move(success);
-    }
+    void on_success(std::function<void(std::variant<message, sign_in, sign_up> &&)> success) { success_ = std::move(success); }
 
     void on_error(std::function<void(std::string_view)> error) { error_ = std::move(error); }
 
@@ -337,7 +334,12 @@ public:
         while (true) {
             if (state_ == package_state::header_transfering) {
                 if (offset_ - offset_new > sizeof(header)) {
-                    offset_new += header_deserializer(buffer_.data() + offset_new, header_);
+                    if (size_t add = header_deserializer(buffer_.data() + offset_new, header_); add == 0) {
+                        error_("Unknown type");
+                        return;
+                    } else {
+                        offset_new += add;
+                    }
                     if (header_.size > BUFFER_SIZE) {
                         error_("Package is too big");
                         return;
@@ -350,10 +352,15 @@ public:
             if (offset_ - offset_new > header_.size) {
                 std::variant<message, sign_in, sign_up> tmp;
                 switch (header_.type) {
-                case MESSAGE:
-                    offset_new += message_serializer(buffer_.data() + offset_new, std::get<message>(tmp));
+                case MESSAGE: {
+                    if (size_t add = message_serializer(buffer_.data() + offset_new, std::get<message>(tmp)); add == 0) {
+                        error_("Unknown type");
+                        return;
+                    } else {
+                        offset_new += add;
+                    }
                     break;
-
+                }
                 case SIGN_IN:
                     offset_new += sign_in_serializer(buffer_.data() + offset_new, std::get<sign_in>(tmp));
                     break;
@@ -400,8 +407,7 @@ private:
 
 class package_connection {
 public:
-    package_connection(std::function<void()> success_write_handler,
-                       std::function<void(std::string_view)> error_write_handler,
+    package_connection(std::function<void()> success_write_handler, std::function<void(std::string_view)> error_write_handler,
                        std::function<void(std::variant<message, sign_in, sign_up> &&)> success_read_handler,
                        std::function<void(std::string_view)> error_read_handler, asio::string_view host,
                        asio::string_view service, asio::io_context &io_context)
