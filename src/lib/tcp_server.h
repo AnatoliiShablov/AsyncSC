@@ -1,9 +1,10 @@
 #ifndef ASYNCSC_TCP_SERVER_H
 #define ASYNCSC_TCP_SERVER_H
 
-#include <unordered_map>
 #include <memory>
 #include <queue>
+#include <unordered_map>
+
 #include "asio.hpp"
 #include "package.h"
 
@@ -19,21 +20,13 @@ class tcp_server {
 
         tasks() : tasks_queue{}, is_writing{false} {}
 
-        [[nodiscard]] bool empty() const noexcept {
-            return tasks_queue.empty();
-        }
+        [[nodiscard]] bool empty() const noexcept { return tasks_queue.empty(); }
 
-        [[nodiscard]] package &front() {
-            return tasks_queue.front();
-        }
+        [[nodiscard]] package &front() { return tasks_queue.front(); }
 
-        void pop() {
-            tasks_queue.pop();
-        }
+        void pop() { tasks_queue.pop(); }
 
-        void push(package const &pack) {
-            tasks_queue.push(pack);
-        }
+        void push(package const &pack) { tasks_queue.push(pack); }
     };
 
     std::unordered_map<uint32_t, shared_socket> ui_sock;
@@ -42,8 +35,7 @@ class tcp_server {
 
     void start_accept() {
         shared_socket new_user(new asio::ip::tcp::socket(io_context));
-        acceptor.async_accept(*new_user,
-                              std::bind(&tcp_server::accept_handler, this, new_user, std::placeholders::_1));
+        acceptor.async_accept(*new_user, std::bind(&tcp_server::accept_handler, this, new_user, std::placeholders::_1));
     }
 
     void start_read(uint32_t id) {
@@ -104,9 +96,12 @@ class tcp_server {
     }
 
 public:
-    explicit tcp_server(unsigned short port) :
-            io_context{}, acceptor{io_context, asio::ip::tcp::endpoint{asio::ip::tcp::v4(), port}},
-            ui_sock{}, ui_q{}, max_id{0} {}
+    explicit tcp_server(unsigned short port)
+        : io_context{}
+        , acceptor{io_context, asio::ip::tcp::endpoint{asio::ip::tcp::v4(), port}}
+        , ui_sock{}
+        , ui_q{}
+        , max_id{0} {}
 
     void start_server() {
         start_accept();
@@ -114,5 +109,4 @@ public:
     }
 };
 
-
-#endif //ASYNCSC_TCP_SERVER_H
+#endif  // ASYNCSC_TCP_SERVER_H

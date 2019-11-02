@@ -3,6 +3,7 @@
 
 #include <iostream>
 #include <queue>
+
 #include "asio.hpp"
 #include "package.h"
 
@@ -70,5 +71,4 @@ public:
     }
 };
 
-
-#endif //ASYNCSC_TCP_SERVER_H
+#endif  // ASYNCSC_TCP_SERVER_H
