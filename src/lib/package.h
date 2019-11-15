@@ -2,13 +2,18 @@
 #define ASYNCSC_PACKAGE_H
 
 #include <variant>
+#include <queue>
 
 #include "asio.hpp"
 
 size_t const BUFFER_SIZE = 16 * 1024;  // 16 KB
 
-enum package_type : uint8_t { MESSAGE, SIGN_IN, SIGN_UP };
-enum class package_state : uint8_t { header_transfering, body_transfering, ready };
+enum package_type : uint8_t {
+    MESSAGE, SIGN_IN, SIGN_UP
+};
+enum class package_state : uint8_t {
+    header_transfering, body_transfering, ready
+};
 
 uint32_t hash(std::string const &str) {
     uint32_t hash_ = 0;
@@ -92,10 +97,12 @@ size_t message_serializer(std::byte *output, message const &package) {
 }
 
 size_t message_deserializer(std::byte *input, message &package) {
-    uint32_t name_length = static_cast<uint32_t>(input[0]) << UINT32_C(24) | static_cast<uint32_t>(input[1]) << UINT32_C(16) |
-                           static_cast<uint32_t>(input[2]) << UINT32_C(8) | static_cast<uint32_t>(input[3]) << UINT32_C(0);
-    uint32_t text_length = static_cast<uint32_t>(input[4]) << UINT32_C(24) | static_cast<uint32_t>(input[5]) << UINT32_C(16) |
-                           static_cast<uint32_t>(input[6]) << UINT32_C(8) | static_cast<uint32_t>(input[7]) << UINT32_C(0);
+    uint32_t name_length =
+            static_cast<uint32_t>(input[0]) << UINT32_C(24) | static_cast<uint32_t>(input[1]) << UINT32_C(16) |
+            static_cast<uint32_t>(input[2]) << UINT32_C(8) | static_cast<uint32_t>(input[3]) << UINT32_C(0);
+    uint32_t text_length =
+            static_cast<uint32_t>(input[4]) << UINT32_C(24) | static_cast<uint32_t>(input[5]) << UINT32_C(16) |
+            static_cast<uint32_t>(input[6]) << UINT32_C(8) | static_cast<uint32_t>(input[7]) << UINT32_C(0);
     uint32_t hash = static_cast<uint32_t>(input[8]) << UINT32_C(24) | static_cast<uint32_t>(input[9]) << UINT32_C(16) |
                     static_cast<uint32_t>(input[10]) << UINT32_C(8) | static_cast<uint32_t>(input[11]) << UINT32_C(0);
 
@@ -146,11 +153,13 @@ size_t sign_in_serializer(std::byte *output, sign_in const &package) {
 }
 
 size_t sign_in_deserializer(std::byte *input, sign_in &package) {
-    uint32_t name_length = static_cast<uint32_t>(input[0]) << UINT32_C(24) | static_cast<uint32_t>(input[1]) << UINT32_C(16) |
-                           static_cast<uint32_t>(input[2]) << UINT32_C(8) | static_cast<uint32_t>(input[3]) << UINT32_C(0);
+    uint32_t name_length =
+            static_cast<uint32_t>(input[0]) << UINT32_C(24) | static_cast<uint32_t>(input[1]) << UINT32_C(16) |
+            static_cast<uint32_t>(input[2]) << UINT32_C(8) | static_cast<uint32_t>(input[3]) << UINT32_C(0);
     uint32_t password_length = static_cast<uint32_t>(input[4]) << UINT32_C(24) |
                                static_cast<uint32_t>(input[5]) << UINT32_C(16) |
-                               static_cast<uint32_t>(input[6]) << UINT32_C(8) | static_cast<uint32_t>(input[7]) << UINT32_C(0);
+                               static_cast<uint32_t>(input[6]) << UINT32_C(8) |
+                               static_cast<uint32_t>(input[7]) << UINT32_C(0);
 
     package.name.resize(name_length);
     package.password.resize(password_length);
@@ -199,11 +208,13 @@ size_t sign_up_serializer(std::byte *output, sign_up const &package) {
 }
 
 size_t sign_up_deserializer(std::byte *input, sign_up &package) {
-    uint32_t name_length = static_cast<uint32_t>(input[0]) << UINT32_C(24) | static_cast<uint32_t>(input[1]) << UINT32_C(16) |
-                           static_cast<uint32_t>(input[2]) << UINT32_C(8) | static_cast<uint32_t>(input[3]) << UINT32_C(0);
+    uint32_t name_length =
+            static_cast<uint32_t>(input[0]) << UINT32_C(24) | static_cast<uint32_t>(input[1]) << UINT32_C(16) |
+            static_cast<uint32_t>(input[2]) << UINT32_C(8) | static_cast<uint32_t>(input[3]) << UINT32_C(0);
     uint32_t password_length = static_cast<uint32_t>(input[4]) << UINT32_C(24) |
                                static_cast<uint32_t>(input[5]) << UINT32_C(16) |
-                               static_cast<uint32_t>(input[6]) << UINT32_C(8) | static_cast<uint32_t>(input[7]) << UINT32_C(0);
+                               static_cast<uint32_t>(input[6]) << UINT32_C(8) |
+                               static_cast<uint32_t>(input[7]) << UINT32_C(0);
 
     package.name.resize(name_length);
     package.password.resize(password_length);
@@ -238,24 +249,24 @@ public:
             return -1;
         }
         switch (package.index()) {
-        case 0: {
-            header_.type = package_type::MESSAGE;
-            header_.size = sizeof(header) + 2 * sizeof(uint32_t) + std::get<message>(package).name.length() +
-                           std::get<message>(package).text.length();
-            break;
-        }
-        case 1: {
-            header_.type = package_type::SIGN_IN;
-            header_.size = sizeof(header) + 2 * sizeof(uint32_t) + std::get<sign_in>(package).name.length() +
-                           std::get<sign_in>(package).password.length();
-            break;
-        }
-        case 2: {
-            header_.type = package_type::SIGN_UP;
-            header_.size = sizeof(header) + 2 * sizeof(uint32_t) + std::get<sign_up>(package).name.length() +
-                           std::get<sign_up>(package).password.length();
-            break;
-        }
+            case 0: {
+                header_.type = package_type::MESSAGE;
+                header_.size = sizeof(header) + 2 * sizeof(uint32_t) + std::get<message>(package).name.length() +
+                               std::get<message>(package).text.length();
+                break;
+            }
+            case 1: {
+                header_.type = package_type::SIGN_IN;
+                header_.size = sizeof(header) + 2 * sizeof(uint32_t) + std::get<sign_in>(package).name.length() +
+                               std::get<sign_in>(package).password.length();
+                break;
+            }
+            case 2: {
+                header_.type = package_type::SIGN_UP;
+                header_.size = sizeof(header) + 2 * sizeof(uint32_t) + std::get<sign_up>(package).name.length() +
+                               std::get<sign_up>(package).password.length();
+                break;
+            }
         }
         if (header_.size > BUFFER_SIZE) {
             error_("Package is too big");
@@ -263,22 +274,26 @@ public:
         }
         offset_ = header_serializer(buffer_.data(), header_);
         switch (package.index()) {
-        case 0: {
-            message_serializer(buffer_.data() + offset_, std::get<message>(package));
-            break;
-        }
-        case 1: {
-            sign_in_serializer(buffer_.data() + offset_, std::get<sign_in>(package));
-            break;
-        }
-        case 2: {
-            sign_up_serializer(buffer_.data() + offset_, std::get<sign_up>(package));
-            break;
-        }
+            case 0: {
+                message_serializer(buffer_.data() + offset_, std::get<message>(package));
+                break;
+            }
+            case 1: {
+                sign_in_serializer(buffer_.data() + offset_, std::get<sign_in>(package));
+                break;
+            }
+            case 2: {
+                sign_up_serializer(buffer_.data() + offset_, std::get<sign_up>(package));
+                break;
+            }
         }
         offset_ = 0;
         return 0;
     };
+
+    package_state get_state() {
+        return state_;
+    }
 
     [[nodiscard]] auto buffer() { return asio::buffer(buffer_.data() + offset_, left_to_write()); }
 
@@ -288,19 +303,19 @@ public:
             state_ = package_state::body_transfering;
         }
         if (state_ == package_state::body_transfering && offset_ >= sizeof(header) + header_.size) {
-            success_();
             state_ = package_state::ready;
+            success_();
         }
     }
 
 private:
     [[nodiscard]] constexpr size_t left_to_write() const noexcept {
         switch (state_) {
-        case package_state::header_transfering:
-        case package_state::body_transfering:
-            return header_.size - offset_;
-        case package_state::ready:
-            return 0;
+            case package_state::header_transfering:
+            case package_state::body_transfering:
+                return header_.size - offset_;
+            case package_state::ready:
+                return 0;
         }
     }
 
@@ -316,9 +331,12 @@ private:
 
 class package_reciever {
 public:
-    package_reciever() : success_{}, error_{}, buffer_{}, offset_{0}, header_{}, state_{package_state::header_transfering} {}
+    package_reciever()
+            : success_{}, error_{}, buffer_{}, offset_{0}, header_{}, state_{package_state::header_transfering} {}
 
-    void on_success(std::function<void(std::variant<message, sign_in, sign_up> &&)> success) { success_ = std::move(success); }
+    void on_success(std::function<void(std::variant<message, sign_in, sign_up> &&)> success) {
+        success_ = std::move(success);
+    }
 
     void on_error(std::function<void(std::string_view)> error) { error_ = std::move(error); }
 
@@ -352,22 +370,23 @@ public:
             if (offset_ - offset_new > header_.size) {
                 std::variant<message, sign_in, sign_up> tmp;
                 switch (header_.type) {
-                case MESSAGE: {
-                    if (size_t add = message_serializer(buffer_.data() + offset_new, std::get<message>(tmp)); add == 0) {
-                        error_("Unknown type");
-                        return;
-                    } else {
-                        offset_new += add;
+                    case MESSAGE: {
+                        if (size_t add = message_serializer(buffer_.data() + offset_new, std::get<message>(tmp)); add ==
+                                                                                                                  0) {
+                            error_("Unknown type");
+                            return;
+                        } else {
+                            offset_new += add;
+                        }
+                        break;
                     }
-                    break;
-                }
-                case SIGN_IN:
-                    offset_new += sign_in_serializer(buffer_.data() + offset_new, std::get<sign_in>(tmp));
-                    break;
+                    case SIGN_IN:
+                        offset_new += sign_in_serializer(buffer_.data() + offset_new, std::get<sign_in>(tmp));
+                        break;
 
-                case SIGN_UP:
-                    offset_new += sign_up_serializer(buffer_.data() + offset_new, std::get<sign_up>(tmp));
-                    break;
+                    case SIGN_UP:
+                        offset_new += sign_up_serializer(buffer_.data() + offset_new, std::get<sign_up>(tmp));
+                        break;
                 }
                 success_(std::move(tmp));
                 state_ = package_state::header_transfering;
@@ -386,12 +405,12 @@ public:
 private:
     [[nodiscard]] constexpr size_t left_to_read() const noexcept {
         switch (state_) {
-        case package_state::header_transfering:
-            return sizeof(header) - offset_;
-        case package_state::body_transfering:
-            return header_.size - offset_;
-        case package_state::ready:
-            return 0;
+            case package_state::header_transfering:
+                return sizeof(header) - offset_;
+            case package_state::body_transfering:
+                return header_.size - offset_;
+            case package_state::ready:
+                return 0;
         }
     }
 
@@ -407,11 +426,12 @@ private:
 
 class package_connection {
 public:
-    package_connection(std::function<void()> success_write_handler, std::function<void(std::string_view)> error_write_handler,
+    package_connection(std::function<void()> success_write_handler,
+                       std::function<void(std::string_view)> error_write_handler,
                        std::function<void(std::variant<message, sign_in, sign_up> &&)> success_read_handler,
                        std::function<void(std::string_view)> error_read_handler, asio::string_view host,
                        asio::string_view service, asio::io_context &io_context)
-        : socket_{io_context}, sender_{new package_sender{}}, reciever_{new package_reciever{}} {
+            : socket_{io_context}, sender_{new package_sender{}}, reciever_{new package_reciever{}} {
         reciever_->on_error(std::move(error_read_handler));
         reciever_->on_success(std::move(success_read_handler));
         sender_->on_success(std::move(success_write_handler));
@@ -434,22 +454,45 @@ public:
     }
 
     void do_write(std::variant<message, sign_in, sign_up> const &package) {
-        if (sender_->set_package(package) != 0) {
-            return;
+        std::lock_guard<std::mutex> lock_queue(tasks_m);
+        if (write_m.try_lock()) {
+            sender_->set_package(package);
+            write_loop();
+        } else {
+            tasks.push(package);
         }
+    }
+
+private:
+    void write_loop() {
         asio::async_write(socket_, sender_->buffer(), [this](asio::error_code const &error, size_t bytes_sent) {
             if (error) {
                 sender_->send_error(error.message());
+                write_m.unlock();
             } else {
                 sender_->data_transferred(bytes_sent);
+                std::lock_guard<std::mutex> lock_queue(tasks_m);
+                if (sender_->get_state() == package_state::ready) {
+                    if (!tasks.empty() && sender_->set_package(tasks.front()) == 0) {
+                        tasks.pop();
+                        write_loop();
+                    } else {
+                        write_m.unlock();
+                    }
+                } else {
+                    write_loop();
+                }
             }
         });
     }
 
-private:
     asio::ip::tcp::socket socket_;
     std::unique_ptr<package_sender> sender_;
     std::unique_ptr<package_reciever> reciever_;
+
+    std::queue<std::variant<message, sign_in, sign_up>> tasks;
+    std::mutex tasks_m;
+    std::mutex write_m;
 };
 
 #endif  // ASYNCSC_PACKAGE_H
