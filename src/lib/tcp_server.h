@@ -1,111 +1,123 @@
 #ifndef ASYNCSC_TCP_SERVER_H
 #define ASYNCSC_TCP_SERVER_H
 
-#include <memory>
-#include <queue>
+#include <cstdint>
+#include <cstdio>
 #include <unordered_map>
 
 #include "asio.hpp"
+#include "connection.h"
 #include "package.h"
 
 class tcp_server {
-    typedef std::shared_ptr<asio::ip::tcp::socket> shared_socket;
-    asio::io_context io_context;
-    asio::ip::tcp::acceptor acceptor;
+public:
+    explicit tcp_server(unsigned short port, asio::io_context &context)
+        : max_id{}
+        , server{[this](asio::ip::tcp::socket &&new_user) {
+                     std::fprintf(stdout, "New connection\n");
+                     std::fflush(stdout);
+                     counter[++max_id] = std::make_pair(0, 0);
+                     users.emplace(max_id,
+                                   new client_connection{
+                                       std::bind(&tcp_server::success_write_handler, this, max_id),
+                                       std::bind(&tcp_server::error_write_handler, this, max_id, std::placeholders::_1),
+                                       std::bind(&tcp_server::success_read_handler, this, max_id, std::placeholders::_1),
+                                       std::bind(&tcp_server::error_read_handler, this, max_id, std::placeholders::_1),
+                                       std::move(new_user)});
+                 },
+                 [this](std::string_view error_message) {
+                     std::fprintf(stderr, "%.*s\n", static_cast<int>(error_message.size()), error_message.data());
+                     std::fflush(stderr);
+                 },
+                 port, context} {}
 
-    struct tasks {
-        std::queue<package> tasks_queue;
-        bool is_writing;
-        std::mutex is_writing_mutex;
+private:
+    void success_write_handler(size_t id) {
+        std::fprintf(stdout, "successfully written (id : %5zu) : %5zu packages\n", id, ++counter[id].first);
+        std::fflush(stdout);
+    }
 
-        tasks() : tasks_queue{}, is_writing{false} {}
+    void error_write_handler(size_t id, std::string_view error_message) {
+        std::fprintf(stderr, "Write error on id : %5zu\n%.*s\n", id, static_cast<int>(error_message.size()),
+                     error_message.data());
+        std::fflush(stderr);
+        counter.erase(id);
+        connected_users.erase(id);
+        users.erase(id);
+    }
 
-        [[nodiscard]] bool empty() const noexcept { return tasks_queue.empty(); }
+    void success_read_handler(size_t id, std::variant<message, sign_in, sign_up> &&package) {
+        std::fprintf(stdout, "successfully read (id : %5zu) : %5zu packages\n", id, ++counter[id].second);
+        std::fflush(stdout);
+        if (!connected_users.count(id) && package.index() == 0) {
+            std::fprintf(stderr, "User on id : %5zu isn't singed\n", id);
+            std::fflush(stderr);
+            message signal{"admin", "You're not signed"};
+            users[id]->write(signal);
+            return;
+        }
+        if (connected_users.count(id) && package.index() != 0) {
+            std::fprintf(stderr, "User on id : %5zu already singed\n", id);
+            std::fflush(stderr);
+            message signal{"admin", "You're already signed"};
+            users[id]->write(signal);
+            return;
+        }
+        if (package.index() == 0) {
+            for (auto &connection : users) {
+                if (connected_users.count(connection.first) && connection.first != id) {
+                    connection.second->write(package);
+                }
+            }
+        }
+        if (package.index() == 1) {
+            sign_in tmp = std::move(std::get<sign_in>(package));
+            if (users_base[tmp.name] == tmp.password) {
+                connected_users[id] = tmp.name;
+            } else {
+                std::fprintf(stderr, "User on id : %5zu wrong password\n", id);
+                std::fflush(stderr);
+                message signal{"admin", "Wrong password"};
+                users[id]->write(signal);
+            }
+        }
+        if (package.index() == 2) {
+            sign_up tmp = std::move(std::get<sign_up>(package));
+            if (users_base.count(tmp.name)) {
+                std::fprintf(stderr, "User on id : %5zu such user already exists\n", id);
+                std::fflush(stderr);
+                message signal{"admin", "Such user already exists"};
+                users[id]->write(signal);
+            } else {
+                if (tmp.password.length() < 5) {
+                    std::fprintf(stderr, "User on id : %5zu Password is too simple\n", id);
+                    std::fflush(stderr);
+                    message signal{"admin", "Password should be 5 or more symbols"};
+                    users[id]->write(signal);
+                } else {
+                    users_base[tmp.name] = tmp.password;
+                }
+            }
+        }
+    }
 
-        [[nodiscard]] package &front() { return tasks_queue.front(); }
+    void error_read_handler(size_t id, std::string_view error_message) {
+        std::fprintf(stderr, "Read error on id : %5zu\n%.*s\n", id, static_cast<int>(error_message.size()),
+                     error_message.data());
+        std::fflush(stderr);
+        users.erase(id);
+        counter.erase(id);
+        connected_users.erase(id);
+    }
 
-        void pop() { tasks_queue.pop(); }
+    std::unordered_map<uint32_t, std::unique_ptr<client_connection>> users;
+    std::unordered_map<uint32_t, std::string> connected_users;
+    std::unordered_map<std::string, std::string> users_base;
 
-        void push(package const &pack) { tasks_queue.push(pack); }
-    };
-
-    std::unordered_map<uint32_t, shared_socket> ui_sock;
-    std::unordered_map<uint32_t, tasks> ui_q;
+    std::unordered_map<uint32_t, std::pair<size_t, size_t>> counter;
     uint32_t max_id;
 
-    void start_accept() {
-        shared_socket new_user(new asio::ip::tcp::socket(io_context));
-        acceptor.async_accept(*new_user, std::bind(&tcp_server::accept_handler, this, new_user, std::placeholders::_1));
-    }
-
-    void start_read(uint32_t id) {
-        package pack;
-        package::async_read(*ui_sock[id], pack, std::bind(&tcp_server::read_handler, this, id, pack, std::placeholders::_1));
-    }
-
-    void start_write(uint32_t id) {
-        std::lock_guard<std::mutex> lock(ui_q[id].is_writing_mutex);
-        if (ui_q[id].is_writing || ui_q[id].empty()) {
-            return;
-        }
-        ui_q[id].is_writing = true;
-        package::async_write(*ui_sock[id], ui_q[id].front(),
-                             std::bind(&tcp_server::write_handler, this, id, std::placeholders::_1));
-    }
-
-    void accept_handler(shared_socket const &new_user, asio::error_code const &error) {
-        if (!error) {
-            ui_sock.emplace(++max_id, new_user);
-            ui_q[max_id];
-            start_read(max_id);
-        }
-        start_accept();
-    }
-
-    void read_handler(uint32_t id, package &pack, asio::error_code const &error) {
-        if (error) {
-            ui_sock.erase(id);
-            ui_q.erase(id);
-            return;
-        }
-
-        std::string message;
-        pack >> message;
-        message = std::to_string(id) + ": " + message;
-        pack.clear();
-        pack << message;
-
-        for (auto &s : ui_q) {
-            s.second.push(pack);
-            start_write(s.first);
-        }
-        start_read(id);
-    }
-
-    void write_handler(uint32_t id, asio::error_code const &error) {
-        if (error) {
-            ui_sock.erase(id);
-            ui_q.erase(id);
-            return;
-        }
-        std::lock_guard<std::mutex> lock(ui_q[id].is_writing_mutex);
-        ui_q[id].is_writing = false;
-        ui_q[id].pop();
-        start_write(id);
-    }
-
-public:
-    explicit tcp_server(unsigned short port)
-        : io_context{}
-        , acceptor{io_context, asio::ip::tcp::endpoint{asio::ip::tcp::v4(), port}}
-        , ui_sock{}
-        , ui_q{}
-        , max_id{0} {}
-
-    void start_server() {
-        start_accept();
-        io_context.run();
-    }
+    server_connection server;
 };
 
 #endif  // ASYNCSC_TCP_SERVER_H

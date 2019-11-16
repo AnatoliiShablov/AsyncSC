@@ -1,7 +1,10 @@
 #ifndef ASYNCSC_PACKAGE_H
 #define ASYNCSC_PACKAGE_H
 
-#include <queue>
+#include <cstdint>
+#include <functional>
+#include <iostream>
+#include <string>
 #include <variant>
 
 #include "asio.hpp"
@@ -19,6 +22,7 @@ uint32_t hash(std::string const &str) {
         hash_ += static_cast<uint32_t>(c) * mult;
         mult *= alphabet_size;
     }
+    return hash_;
 }
 
 struct header {
@@ -232,6 +236,7 @@ public:
     void send_error(std::string_view error) { error_(error); }
 
     void send_success() { success_(); }
+
     int set_package(std::variant<message, sign_in, sign_up> const &package) {
         if (state_ != package_state::ready) {
             error_("Sender is busy");
@@ -240,20 +245,20 @@ public:
         switch (package.index()) {
         case 0: {
             header_.type = package_type::MESSAGE;
-            header_.size = sizeof(header) + 2 * sizeof(uint32_t) + std::get<message>(package).name.length() +
-                           std::get<message>(package).text.length();
+            header_.size =
+                2 * sizeof(uint32_t) + std::get<message>(package).name.length() + std::get<message>(package).text.length();
             break;
         }
         case 1: {
             header_.type = package_type::SIGN_IN;
-            header_.size = sizeof(header) + 2 * sizeof(uint32_t) + std::get<sign_in>(package).name.length() +
-                           std::get<sign_in>(package).password.length();
+            header_.size =
+                2 * sizeof(uint32_t) + std::get<sign_in>(package).name.length() + std::get<sign_in>(package).password.length();
             break;
         }
         case 2: {
             header_.type = package_type::SIGN_UP;
-            header_.size = sizeof(header) + 2 * sizeof(uint32_t) + std::get<sign_up>(package).name.length() +
-                           std::get<sign_up>(package).password.length();
+            header_.size =
+                2 * sizeof(uint32_t) + std::get<sign_up>(package).name.length() + std::get<sign_up>(package).password.length();
             break;
         }
         }
@@ -277,14 +282,21 @@ public:
         }
         }
         offset_ = 0;
+        state_ = package_state::header_transfering;
         return 0;
     };
 
     package_state get_state() { return state_; }
 
-    [[nodiscard]] auto buffer() { return asio::buffer(buffer_.data() + offset_, left_to_write()); }
+    [[nodiscard]] auto buffer() {
+        if (left_to_write() != 0)
+            std::cout << "write " << left_to_write() << std::endl;
+        return asio::buffer(buffer_.data() + offset_, left_to_write());
+    }
 
     void data_transferred(size_t bytes_transferred) {
+        if (bytes_transferred != 0)
+            std::cout << "write-transfered " << bytes_transferred << std::endl;
         offset_ += bytes_transferred;
         if (state_ == package_state::header_transfering && offset_ >= sizeof(header)) {
             state_ = package_state::body_transfering;
@@ -300,10 +312,11 @@ private:
         switch (state_) {
         case package_state::header_transfering:
         case package_state::body_transfering:
-            return header_.size - offset_;
+            return sizeof(header) + header_.size - offset_;
         case package_state::ready:
             return 0;
         }
+        return 0;
     }
 
     std::function<void()> success_;
@@ -327,15 +340,23 @@ public:
     void send_error(std::string_view error) { error_(error); }
 
     [[nodiscard]] auto buffer() {
+        if (left_to_read() != 0)
+            std::cout << "read " << left_to_read() << std::endl;
         return asio::buffer(buffer_.data() + offset_, std::min(left_to_read(), BUFFER_SIZE - offset_));
     }
 
     void data_transferred(size_t bytes_transferred) {
+        if (bytes_transferred != 0)
+            std::cout << "read-transfered " << bytes_transferred << std::endl;
         offset_ += bytes_transferred;
         size_t offset_new = 0;
         while (true) {
             if (state_ == package_state::header_transfering) {
-                if (offset_ - offset_new > sizeof(header)) {
+                if (bytes_transferred != 0)
+                    std::cout << "header_transferring" << std::endl;
+                if (offset_ - offset_new >= sizeof(header)) {
+                    if (bytes_transferred != 0)
+                        std::cout << "header_read" << std::endl;
                     if (size_t add = header_deserializer(buffer_.data() + offset_new, header_); add == 0) {
                         error_("Unknown type");
                         return;
@@ -346,12 +367,14 @@ public:
                         error_("Package is too big");
                         return;
                     }
+                    if (bytes_transferred != 0)
+                        std::cout << "header_info " << header_.size << std::endl;
                     state_ = package_state::body_transfering;
                 } else {
                     break;
                 }
             }
-            if (offset_ - offset_new > header_.size) {
+            if (state_ == package_state::body_transfering && offset_ - offset_new >= header_.size) {
                 std::variant<message, sign_in, sign_up> tmp;
                 switch (header_.type) {
                 case MESSAGE: {
@@ -395,6 +418,7 @@ private:
         case package_state::ready:
             return 0;
         }
+        return 0;
     }
 
     std::function<void(std::variant<message, sign_in, sign_up> &&)> success_;
@@ -405,115 +429,6 @@ private:
     header header_;
 
     package_state state_;
-};
-
-class client_connection {
-public:
-    client_connection(std::function<void()> success_write_handler, std::function<void(std::string_view)> error_write_handler,
-                      std::function<void(std::variant<message, sign_in, sign_up> &&)> success_read_handler,
-                      std::function<void(std::string_view)> error_read_handler, asio::string_view host,
-                      asio::string_view service, asio::io_context &io_context)
-        : socket_{io_context}, sender_{new package_sender{}}, reciever_{new package_reciever{}} {
-        reciever_->on_error(std::move(error_read_handler));
-        reciever_->on_success(std::move(success_read_handler));
-        sender_->on_success(std::move(success_write_handler));
-        sender_->on_error(std::move(error_write_handler));
-
-        asio::ip::tcp::resolver resolver(io_context);
-        asio::connect(socket_, asio::ip::tcp::resolver(io_context).resolve(host, service));
-        read_loop();
-    }
-
-    client_connection(std::function<void()> success_write_handler, std::function<void(std::string_view)> error_write_handler,
-                      std::function<void(std::variant<message, sign_in, sign_up> &&)> success_read_handler,
-                      std::function<void(std::string_view)> error_read_handler, asio::ip::tcp::socket &&socket)
-        : socket_{std::move(socket)}, sender_{new package_sender{}}, reciever_{new package_reciever{}} {
-        reciever_->on_error(std::move(error_read_handler));
-        reciever_->on_success(std::move(success_read_handler));
-        sender_->on_success(std::move(success_write_handler));
-        sender_->on_error(std::move(error_write_handler));
-
-        read_loop();
-    }
-
-    void write(std::variant<message, sign_in, sign_up> const &package) {
-        std::lock_guard<std::mutex> lock_queue(tasks_m);
-        if (write_m.try_lock()) {
-            sender_->set_package(package);
-            write_loop();
-        } else {
-            tasks.push(package);
-        }
-    }
-
-private:
-    void read_loop() {
-        socket_.async_read_some(reciever_->buffer(), [this](asio::error_code const &error, size_t bytes_recieved) {
-            if (error) {
-                reciever_->send_error(error.message());
-                return;
-            }
-            reciever_->data_transferred(bytes_recieved);
-            read_loop();
-        });
-    }
-
-    void write_loop() {
-        asio::async_write(socket_, sender_->buffer(), [this](asio::error_code const &error, size_t bytes_sent) {
-            if (error) {
-                sender_->send_error(error.message());
-                write_m.unlock();
-            } else {
-                sender_->data_transferred(bytes_sent);
-                std::lock_guard<std::mutex> lock_queue(tasks_m);
-                if (sender_->get_state() == package_state::ready) {
-                    if (!tasks.empty() && sender_->set_package(tasks.front()) == 0) {
-                        tasks.pop();
-                        write_loop();
-                    } else {
-                        write_m.unlock();
-                    }
-                } else {
-                    write_loop();
-                }
-            }
-        });
-    }
-
-    asio::ip::tcp::socket socket_;
-    std::unique_ptr<package_sender> sender_;
-    std::unique_ptr<package_reciever> reciever_;
-
-    std::queue<std::variant<message, sign_in, sign_up>> tasks;
-    std::mutex tasks_m;
-    std::mutex write_m;
-};
-
-class server_connection {
-public:
-    server_connection(std::function<void(asio::ip::tcp::socket &&)> success_accept_handler,
-                      std::function<void(std::string_view)> error_accept_handler, asio::io_context &io_context)
-        : acceptor_{io_context}, success_{std::move(success_accept_handler)}, error_{std::move(error_accept_handler)} {
-        accept_loop();
-    }
-
-private:
-    void accept_loop() {
-        asio::ip::tcp::socket new_client(acceptor_.get_executor());
-
-        acceptor_.async_accept(new_client, [this, &new_client](asio::error_code const &error) {
-            if (error) {
-                error_(error.message());
-            } else {
-                success_(std::move(new_client));
-            }
-            accept_loop();
-        });
-    }
-
-    asio::ip::tcp::acceptor acceptor_;
-    std::function<void(asio::ip::tcp::socket &&)> success_;
-    std::function<void(std::string_view)> error_;
 };
 
 #endif  // ASYNCSC_PACKAGE_H

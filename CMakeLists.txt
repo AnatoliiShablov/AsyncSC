@@ -13,25 +13,31 @@ add_library(package_lib
         src/lib/package.cpp)
 target_link_libraries(package_lib asio::asio)
 target_include_directories(package_lib PUBLIC ${ASIO_INCLUDE_DIRS})
+# written [✓]      tested [ ]
 
-add_library(server_tcl_lib
+
+add_library(connection_lib
+        src/lib/connection.h
+        src/lib/connection.cpp)
+target_link_libraries(connection_lib asio::asio package_lib)
+target_include_directories(connection_lib PUBLIC ${ASIO_INCLUDE_DIRS})
+# written [✓]      tested [ ]
+
+
+add_library(server_tcp_lib
         src/lib/tcp_server.cpp
         src/lib/tcp_server.h)
-target_link_libraries(server_tcl_lib asio::asio package_lib)
-target_include_directories(server_tcl_lib PUBLIC ${ASIO_INCLUDE_DIRS})
-
-add_library(client_tcp_lib
-        src/lib/tcp_client.h
-        src/lib/tcp_client.cpp)
-target_link_libraries(client_tcp_lib asio::asio package_lib)
-target_include_directories(client_tcp_lib PUBLIC ${ASIO_INCLUDE_DIRS})
-
+target_link_libraries(server_tcp_lib asio::asio package_lib connection_lib)
+target_include_directories(server_tcp_lib PUBLIC ${ASIO_INCLUDE_DIRS})
+# written [✓]      tested [ ]
 
 add_executable(AsyncServer src/server.cpp)
-target_link_libraries(AsyncServer asio::asio package_lib server_tcl_lib)
+target_link_libraries(AsyncServer server_tcp_lib)
 target_include_directories(AsyncServer PUBLIC ${ASIO_INCLUDE_DIRS})
+# written [✓]      tested [ ]
 
 
 add_executable(AsyncClient src/client.cpp)
-target_link_libraries(AsyncClient asio::asio package_lib client_tcp_lib)
+target_link_libraries(AsyncClient asio::asio package_lib connection_lib)
 target_include_directories(AsyncClient PUBLIC ${ASIO_INCLUDE_DIRS})
+# written [ ]      tested [ ]
