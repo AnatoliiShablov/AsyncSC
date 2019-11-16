@@ -424,13 +424,13 @@ private:
     package_state state_;
 };
 
-class package_connection {
+class client_connection {
 public:
-    package_connection(std::function<void()> success_write_handler,
-                       std::function<void(std::string_view)> error_write_handler,
-                       std::function<void(std::variant<message, sign_in, sign_up> &&)> success_read_handler,
-                       std::function<void(std::string_view)> error_read_handler, asio::string_view host,
-                       asio::string_view service, asio::io_context &io_context)
+    client_connection(std::function<void()> success_write_handler,
+                      std::function<void(std::string_view)> error_write_handler,
+                      std::function<void(std::variant<message, sign_in, sign_up> &&)> success_read_handler,
+                      std::function<void(std::string_view)> error_read_handler, asio::string_view host,
+                      asio::string_view service, asio::io_context &io_context)
             : socket_{io_context}, sender_{new package_sender{}}, reciever_{new package_reciever{}} {
         reciever_->on_error(std::move(error_read_handler));
         reciever_->on_success(std::move(success_read_handler));
@@ -439,21 +439,25 @@ public:
 
         asio::ip::tcp::resolver resolver(io_context);
         asio::connect(socket_, asio::ip::tcp::resolver(io_context).resolve(host, service));
-        do_read();
+        read_loop();
     }
 
-    void do_read() {
-        socket_.async_read_some(reciever_->buffer(), [this](asio::error_code const &error, size_t bytes_recieved) {
-            if (error) {
-                reciever_->send_error(error.message());
-                return;
-            }
-            reciever_->data_transferred(bytes_recieved);
-            do_read();
-        });
+    client_connection(std::function<void()> success_write_handler,
+                      std::function<void(std::string_view)> error_write_handler,
+                      std::function<void(std::variant<message, sign_in, sign_up> &&)> success_read_handler,
+                      std::function<void(std::string_view)> error_read_handler, asio::ip::tcp::socket &&socket)
+            : socket_{std::move(socket)}, sender_{new package_sender{}}, reciever_{new package_reciever{}} {
+        reciever_->on_error(std::move(error_read_handler));
+        reciever_->on_success(std::move(success_read_handler));
+        sender_->on_success(std::move(success_write_handler));
+        sender_->on_error(std::move(error_write_handler));
+
+        asio::ip::tcp::resolver resolver(io_context);
+        asio::connect(socket_, asio::ip::tcp::resolver(io_context).resolve(host, service));
+        read_loop();
     }
 
-    void do_write(std::variant<message, sign_in, sign_up> const &package) {
+    void write(std::variant<message, sign_in, sign_up> const &package) {
         std::lock_guard<std::mutex> lock_queue(tasks_m);
         if (write_m.try_lock()) {
             sender_->set_package(package);
@@ -464,6 +468,17 @@ public:
     }
 
 private:
+    void read_loop() {
+        socket_.async_read_some(reciever_->buffer(), [this](asio::error_code const &error, size_t bytes_recieved) {
+            if (error) {
+                reciever_->send_error(error.message());
+                return;
+            }
+            reciever_->data_transferred(bytes_recieved);
+            read_loop();
+        });
+    }
+
     void write_loop() {
         asio::async_write(socket_, sender_->buffer(), [this](asio::error_code const &error, size_t bytes_sent) {
             if (error) {
@@ -493,6 +508,35 @@ private:
     std::queue<std::variant<message, sign_in, sign_up>> tasks;
     std::mutex tasks_m;
     std::mutex write_m;
+};
+
+class server_connection {
+public:
+    server_connection(std::function<void(asio::ip::tcp::socket &&)> success_accept_handler,
+                      std::function<void(std::string_view)> error_accept_handler,
+                      asio::io_context &io_context)
+            : acceptor_{io_context},
+              success_{std::move(success_accept_handler)}, error_{std::move(error_accept_handler)} {
+        accept_loop();
+    }
+
+private:
+    void accept_loop() {
+        asio::ip::tcp::socket new_client;
+
+        acceptor_.async_accept(new_client, [this, &new_client](asio::error_code const &error) {
+            if (error) {
+                error_(error.message());
+            } else {
+                success(new_client);
+            }
+            accept_loop();
+        });
+    }
+
+    asio::ip::tcp::acceptor acceptor_;
+    std::function<void()> success_;
+    std::function<void(std::string_view)> error_;
 };
 
 #endif  // ASYNCSC_PACKAGE_H
