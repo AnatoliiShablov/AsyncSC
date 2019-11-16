@@ -49,6 +49,7 @@ size_t header_deserializer(std::byte *input, header &head) {
     if (type > 2) {
         return 0;
     }
+
     head.type = static_cast<package_type>(type);
 
     return sizeof(header);
@@ -62,6 +63,10 @@ struct message {
 
 uint32_t message_hash(message const &package) {
     return hash(package.name) ^ hash(package.text);
+}
+
+size_t message_size_after_serializer(message const &package) {
+    return 3 * sizeof(uint32_t) + package.name.length() + package.text.length();
 }
 
 size_t message_serializer(std::byte *output, message const &package) {
@@ -124,6 +129,10 @@ struct sign_in {
     std::string password;
 };
 
+size_t sign_in_size_after_serializer(sign_in const &package) {
+    return 2 * sizeof(uint32_t) + package.name.length() + package.password.length();
+}
+
 size_t sign_in_serializer(std::byte *output, sign_in const &package) {
     uint32_t name_length = package.name.length();
     uint32_t password_length = package.password.length();
@@ -176,6 +185,10 @@ struct sign_up {
     std::string name;
     std::string password;
 };
+
+size_t sign_up_size_after_serializer(sign_up const &package) {
+    return 2 * sizeof(uint32_t) + package.name.length() + package.password.length();
+}
 
 size_t sign_up_serializer(std::byte *output, sign_up const &package) {
     uint32_t name_length = package.name.length();
@@ -245,20 +258,17 @@ public:
         switch (package.index()) {
         case 0: {
             header_.type = package_type::MESSAGE;
-            header_.size =
-                2 * sizeof(uint32_t) + std::get<message>(package).name.length() + std::get<message>(package).text.length();
+            header_.size = message_size_after_serializer(std::get<message>(package));
             break;
         }
         case 1: {
             header_.type = package_type::SIGN_IN;
-            header_.size =
-                2 * sizeof(uint32_t) + std::get<sign_in>(package).name.length() + std::get<sign_in>(package).password.length();
+            header_.size = sign_in_size_after_serializer(std::get<sign_in>(package));
             break;
         }
         case 2: {
             header_.type = package_type::SIGN_UP;
-            header_.size =
-                2 * sizeof(uint32_t) + std::get<sign_up>(package).name.length() + std::get<sign_up>(package).password.length();
+            header_.size = sign_up_size_after_serializer(std::get<sign_up>(package));
             break;
         }
         }
@@ -346,17 +356,15 @@ public:
     }
 
     void data_transferred(size_t bytes_transferred) {
-        if (bytes_transferred != 0)
-            std::cout << "read-transfered " << bytes_transferred << std::endl;
+        std::cout << "read-transfered " << bytes_transferred << std::endl;
         offset_ += bytes_transferred;
         size_t offset_new = 0;
         while (true) {
             if (state_ == package_state::header_transfering) {
-                if (bytes_transferred != 0)
-                    std::cout << "header_transferring" << std::endl;
+                std::cout << "header_transferring" << std::endl;
+                std::cout << "old: " << offset_ << "new: " << offset_new << std::endl;
                 if (offset_ - offset_new >= sizeof(header)) {
-                    if (bytes_transferred != 0)
-                        std::cout << "header_read" << std::endl;
+                    std::cout << "header_read" << std::endl;
                     if (size_t add = header_deserializer(buffer_.data() + offset_new, header_); add == 0) {
                         error_("Unknown type");
                         return;
@@ -367,8 +375,7 @@ public:
                         error_("Package is too big");
                         return;
                     }
-                    if (bytes_transferred != 0)
-                        std::cout << "header_info " << header_.size << std::endl;
+                    std::cout << "header_size " << header_.size << std::endl;
                     state_ = package_state::body_transfering;
                 } else {
                     break;
@@ -379,10 +386,11 @@ public:
                 switch (header_.type) {
                 case MESSAGE: {
                     if (size_t add = message_deserializer(buffer_.data() + offset_new, std::get<message>(tmp)); add == 0) {
-                        error_("Unknown type");
+                        error_("Wrong Hash");
                         return;
                     } else {
                         offset_new += add;
+                        std::cout << std::get<message>(tmp).text << std::endl;
                     }
                     break;
                 }
@@ -399,6 +407,7 @@ public:
             } else {
                 break;
             }
+            std::cout << "old: " << offset_ << "new: " << offset_new << std::endl;
         }
         if (offset_new != 0) {
             for (size_t i = offset_new, j = 0; i < offset_; ++i, ++j) {

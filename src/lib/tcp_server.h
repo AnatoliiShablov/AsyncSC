@@ -17,13 +17,14 @@ public:
                      std::fprintf(stdout, "New connection\n");
                      std::fflush(stdout);
                      counter[++max_id] = std::make_pair(0, 0);
+                     std::cout << "USERS ID=" << max_id << std::endl;
                      users.emplace(max_id,
                                    new client_connection{
                                        std::bind(&tcp_server::success_write_handler, this, max_id),
                                        std::bind(&tcp_server::error_write_handler, this, max_id, std::placeholders::_1),
                                        std::bind(&tcp_server::success_read_handler, this, max_id, std::placeholders::_1),
                                        std::bind(&tcp_server::error_read_handler, this, max_id, std::placeholders::_1),
-                                       std::move(new_user)});
+                                       std::forward<asio::ip::tcp::socket>(new_user)});
                  },
                  [this](std::string_view error_message) {
                      std::fprintf(stderr, "%.*s\n", static_cast<int>(error_message.size()), error_message.data());
@@ -34,6 +35,7 @@ public:
 private:
     void success_write_handler(size_t id) {
         std::fprintf(stdout, "successfully written (id : %5zu) : %5zu packages\n", id, ++counter[id].first);
+        std::cout << "USERS ID(WRITE)=" << id << std::endl;
         std::fflush(stdout);
     }
 
@@ -49,15 +51,16 @@ private:
     void success_read_handler(size_t id, std::variant<message, sign_in, sign_up> &&package) {
         std::fprintf(stdout, "successfully read (id : %5zu) : %5zu packages\n", id, ++counter[id].second);
         std::fflush(stdout);
+        std::cout << "USERS ID(READ)=" << id << std::endl;
         if (!connected_users.count(id) && package.index() == 0) {
-            std::fprintf(stderr, "User on id : %5zu isn't singed\n", id);
+            std::fprintf(stderr, "User on id : %5zu isn't signed\n", id);
             std::fflush(stderr);
             message signal{"admin", "You're not signed"};
             users[id]->write(signal);
             return;
         }
         if (connected_users.count(id) && package.index() != 0) {
-            std::fprintf(stderr, "User on id : %5zu already singed\n", id);
+            std::fprintf(stderr, "User on id : %5zu already signed\n", id);
             std::fflush(stderr);
             message signal{"admin", "You're already signed"};
             users[id]->write(signal);

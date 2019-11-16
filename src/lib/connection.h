@@ -47,6 +47,7 @@ public:
 
 private:
     void read_loop() {
+        std::cout << "inloop" << std::endl;
         socket_.async_read_some(reciever_->buffer(), [this](asio::error_code const &error, size_t bytes_recieved) {
             if (error) {
                 reciever_->send_error(error.message());
@@ -103,6 +104,9 @@ public:
 private:
     void accept_loop() {
         acceptor_.async_accept(socket_, [this](asio::error_code const &error) {
+            std::cout << socket_.remote_endpoint().address().to_string() << ":" << socket_.remote_endpoint().port()
+                      << std::endl;
+            asio::write(socket_, asio::buffer("asfasfasfasfasfasfasfasf"));
             if (error) {
                 error_(error.message());
                 decltype(socket_)(std::move(socket_));

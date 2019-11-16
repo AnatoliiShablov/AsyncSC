@@ -33,26 +33,20 @@ int main() {
         "56789",
         io_context};
     std::string call;
-    message tmp{};
-    while (true) {
-        std::cin >> call;
-        if (call == "signin") {
-            sign_in pack;
-            std::cin >> pack.name >> pack.password;
-            client.write(pack);
-            tmp.name = pack.name;
-            continue;
-        }
-        if (call == "signup") {
-            sign_up pack;
-            std::cin >> pack.name >> pack.password;
-            client.write(pack);
-            continue;
-        }
-        if (call == "exit") {
-            break;
-        }
-        tmp.text = call;
-        client.write(tmp);
+    message tmp{"kek", "kk"};
+    std::cin >> call;
+    if (call == "signin") {
+        sign_in pack;
+        std::cin >> pack.name >> pack.password;
+        client.write(pack);
+        tmp.name = pack.name;
     }
+    if (call == "signup") {
+        sign_up pack;
+        std::cin >> pack.name >> pack.password;
+        client.write(pack);
+    }
+    tmp.text = call;
+    client.write(tmp);
+    io_context.run();
 }
