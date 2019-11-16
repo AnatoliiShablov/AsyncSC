@@ -106,7 +106,6 @@ private:
         acceptor_.async_accept(socket_, [this](asio::error_code const &error) {
             std::cout << socket_.remote_endpoint().address().to_string() << ":" << socket_.remote_endpoint().port()
                       << std::endl;
-            asio::write(socket_, asio::buffer("asfasfasfasfasfasfasfasf"));
             if (error) {
                 error_(error.message());
                 decltype(socket_)(std::move(socket_));

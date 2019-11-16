@@ -55,14 +55,14 @@ private:
         if (!connected_users.count(id) && package.index() == 0) {
             std::fprintf(stderr, "User on id : %5zu isn't signed\n", id);
             std::fflush(stderr);
-            message signal{"admin", "You're not signed"};
+            message signal{"admin", "You\'re not signed"};
             users[id]->write(signal);
             return;
         }
         if (connected_users.count(id) && package.index() != 0) {
             std::fprintf(stderr, "User on id : %5zu already signed\n", id);
             std::fflush(stderr);
-            message signal{"admin", "You're already signed"};
+            message signal{"admin", "You\'re already signed"};
             users[id]->write(signal);
             return;
         }
