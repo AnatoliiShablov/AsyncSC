@@ -242,7 +242,6 @@ public:
     void send_error(std::string_view error) { error_(error); }
 
     void send_success() { success_(); }
-
     int set_package(std::variant<message, sign_in, sign_up> const &package) {
         if (state_ != package_state::ready) {
             error_("Sender is busy");
@@ -371,8 +370,9 @@ public:
                 std::variant<message, sign_in, sign_up> tmp;
                 switch (header_.type) {
                     case MESSAGE: {
-                        if (size_t add = message_serializer(buffer_.data() + offset_new, std::get<message>(tmp)); add ==
-                                                                                                                  0) {
+                        if (size_t add = message_deserializer(buffer_.data() + offset_new, std::get<message>(tmp));
+                                add ==
+                                0) {
                             error_("Unknown type");
                             return;
                         } else {
@@ -381,11 +381,11 @@ public:
                         break;
                     }
                     case SIGN_IN:
-                        offset_new += sign_in_serializer(buffer_.data() + offset_new, std::get<sign_in>(tmp));
+                        offset_new += sign_in_deserializer(buffer_.data() + offset_new, std::get<sign_in>(tmp));
                         break;
 
                     case SIGN_UP:
-                        offset_new += sign_up_serializer(buffer_.data() + offset_new, std::get<sign_up>(tmp));
+                        offset_new += sign_up_deserializer(buffer_.data() + offset_new, std::get<sign_up>(tmp));
                         break;
                 }
                 success_(std::move(tmp));
@@ -452,8 +452,6 @@ public:
         sender_->on_success(std::move(success_write_handler));
         sender_->on_error(std::move(error_write_handler));
 
-        asio::ip::tcp::resolver resolver(io_context);
-        asio::connect(socket_, asio::ip::tcp::resolver(io_context).resolve(host, service));
         read_loop();
     }
 
@@ -522,20 +520,20 @@ public:
 
 private:
     void accept_loop() {
-        asio::ip::tcp::socket new_client;
+        asio::ip::tcp::socket new_client(acceptor_.get_executor());
 
         acceptor_.async_accept(new_client, [this, &new_client](asio::error_code const &error) {
             if (error) {
                 error_(error.message());
             } else {
-                success(new_client);
+                success_(std::move(new_client));
             }
             accept_loop();
         });
     }
 
     asio::ip::tcp::acceptor acceptor_;
-    std::function<void()> success_;
+    std::function<void(asio::ip::tcp::socket &&)> success_;
     std::function<void(std::string_view)> error_;
 };
 
