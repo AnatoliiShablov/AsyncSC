@@ -3,8 +3,6 @@
 #include <mutex>
 #include <thread>
 
-// #include "GLFW/glfw3.h"
-
 #include "lib/connection.h"
 #include "lib/package.h"
 
@@ -17,8 +15,8 @@ struct task_queue {
 };
 
 void success_write_handler(std::mutex &err_mutex) {
-    std::lock_guard<std::mutex> locker(err_mutex);
     static size_t packages_sent = 0;
+    std::lock_guard<std::mutex> locker(err_mutex);
     std::fprintf(stderr, "Successfully sent %5zu packages\n", ++packages_sent);
     std::fflush(stderr);
 }
@@ -29,16 +27,16 @@ void error_write_handler(std::mutex &err_mutex, std::string_view error_message) 
     std::fflush(stderr);
 }
 
-void success_read_handler(std::mutex &err_mutex, task_queue<message> &from_server,
-                          std::variant<message, sign_in, sign_up> &&package) {
+void success_read_handler(std::mutex &err_mutex, task_queue<std::variant<message, special_signal>> &from_server,
+                          std::variant<message, sign_in, sign_up, special_signal> &&package) {
+    static size_t packages_recieved = 0;
     {
         std::lock_guard<std::mutex> locker(err_mutex);
-        static size_t packages_recieved = 0;
         std::fprintf(stderr, "Successfully recieved %5zu packages\n", ++packages_recieved);
         std::fflush(stderr);
     }
     std::lock_guard<std::mutex> q_locker(from_server.cv_mutex);
-    from_server.tasks.emplace(std::forward<message>(std::get<message>(package)));
+    from_server.tasks.emplace(std::move(std::get<message>(package)));
     from_server.cv.notify_one();
 }
 
@@ -48,8 +46,9 @@ void error_read_handler(std::mutex &err_mutex, std::string_view error_message) {
     std::fflush(stderr);
 }
 
-void connection_loop(task_queue<std::variant<message, sign_in, sign_up>> &to_server, task_queue<message> &from_server,
-                     asio::io_context &io_context, std::atomic_bool &is_done, std::mutex &err_mutex) {
+void connection_loop(task_queue<std::variant<message, sign_in, sign_up, special_signal>> &to_server,
+                     task_queue<std::variant<message, special_signal>> &from_server, asio::io_context &io_context,
+                     std::atomic_bool &is_done, std::mutex &err_mutex) {
     client_connection client{
         std::bind(&success_write_handler, std::ref(err_mutex)),
         std::bind(&error_write_handler, std::ref(err_mutex), std::placeholders::_1),
@@ -71,9 +70,14 @@ void connection_loop(task_queue<std::variant<message, sign_in, sign_up>> &to_ser
     }
 }
 
+[[deprecated]] void new_tasks(task_queue<std::variant<message, sign_in, sign_up, special_signal>> &to_server,
+                              std::thread *connection, std::atomic_bool &is_done) {
+    return;
+}
+
 int main() {
-    task_queue<std::variant<message, sign_in, sign_up>> to_server;
-    task_queue<message> from_server;
+    task_queue<std::variant<message, sign_in, sign_up, special_signal>> to_server;
+    task_queue<std::variant<message, special_signal>> from_server;
     std::atomic_bool is_done{false};
     std::mutex err_mutex;
     std::mutex out_mutex;
@@ -81,30 +85,51 @@ int main() {
     asio::io_context io_context;
     std::thread connection(&connection_loop, std::ref(to_server), std::ref(from_server), std::ref(io_context),
                            std::ref(is_done), std::ref(err_mutex));
-    {
-        std::lock_guard<std::mutex> locker(to_server.cv_mutex);
-        to_server.tasks.push(sign_in{"kek", "cheburek"});
-        to_server.tasks.push(message{"kek", "cheburek"});
-        to_server.tasks.push(sign_up{"kek", "cheburek"});
-        to_server.tasks.push(sign_in{"kek", "cheburek"});
-        to_server.cv.notify_one();
-    }
 
-    while (true) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
-
-        {
-            std::lock_guard<std::mutex> locker(to_server.cv_mutex);
-            to_server.tasks.push(message{"kek", "cheburek"});
-            to_server.cv.notify_one();
-        }
-
+    while (!is_done) {
+        new_tasks(to_server, &connection, is_done);
         std::unique_lock<std::mutex> locker(from_server.cv_mutex);
         if (from_server.cv.wait_for(locker, std::chrono::milliseconds(1),
                                     [&from_server]() { return !from_server.tasks.empty(); })) {
             while (!from_server.tasks.empty()) {
                 std::lock_guard<std::mutex> locker_out(out_mutex);
-                std::cout << from_server.tasks.front().name << " : " << from_server.tasks.front().text << std::endl;
+                switch (from_server.tasks.front().index()) {
+                case 0: {
+                    message tmp = std::move(std::get<message>(from_server.tasks.front()));
+                    std::cout << tmp.name << " : " << tmp.text << std::endl;
+                }
+                case 1: {
+                    special_signal tmp = std::get<special_signal>(from_server.tasks.front());
+                    switch (tmp.type) {
+                    case special_signal::NOT_SIGNED:
+                        std::cout << "NOT SIGNED" << std::endl;
+                        break;
+                    case special_signal::ALREADY_SIGNED:
+                        std::cout << "ALREADY_SIGNED" << std::endl;
+                        break;
+                    case special_signal::USER_ALREADY_EXISTS:
+                        std::cout << "USER_ALREADY_EXISTS" << std::endl;
+                        break;
+                    case special_signal::WRONG_PASSWORD:
+                        std::cout << "WRONG_PASSWORD" << std::endl;
+                        break;
+                    case special_signal::WEAK_PASSWORD:
+                        std::cout << "WEAK_PASSWORD" << std::endl;
+                        break;
+                    case special_signal::SIGNED_UP:
+                        std::cout << "SIGNED_UP" << std::endl;
+                        break;
+                    case special_signal::SIGNED_IN:
+                        std::cout << "SIGNED_IN" << std::endl;
+                        break;
+                    case special_signal::SIGN_OUT:
+                    case special_signal::QUIT:
+                    case special_signal::special_signals_amount:
+                        std::cout << "Sorry, but what???" << std::endl;
+                        break;
+                    }
+                }
+                }
             }
         }
     }

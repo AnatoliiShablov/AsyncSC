@@ -11,10 +11,11 @@
 
 size_t const BUFFER_SIZE = 16 * 1024;  // 16 KB
 
-enum package_type : uint8_t { MESSAGE, SIGNAL, SIGN_IN, SIGN_UP, states_amount };
+enum package_type : uint8_t { MESSAGE, SIGN_IN, SIGN_UP, SIGNAL, types_amount };
+
 enum class package_state : uint8_t { header_transfering, body_transfering, ready };
 
-uint32_t hash(std::string const &str) {
+uint32_t hash(std::string const &str) noexcept {
     uint32_t hash_ = 0;
     uint32_t mult = 1;
     uint32_t alphabet_size = 257;
@@ -50,7 +51,7 @@ size_t header_deserializer(std::byte *input, header &head) {
                 static_cast<uint32_t>(input[2]) << UINT32_C(8) | static_cast<uint32_t>(input[3]) << UINT32_C(0);
 
     auto type = static_cast<uint8_t>(input[4]);
-    if (type >= static_cast<uint8_t>(package_type::states_amount)) {
+    if (type >= static_cast<uint8_t>(package_type::types_amount)) {
         return 0;
     }
 
@@ -61,11 +62,10 @@ size_t header_deserializer(std::byte *input, header &head) {
 
 struct message {
     std::string name;
-    // time_ext time;
     std::string text;
 };
 
-uint32_t message_hash(message const &package) {
+uint32_t message_hash(message const &package) noexcept {
     return hash(package.name) ^ hash(package.text);
 }
 
@@ -242,19 +242,54 @@ size_t sign_up_deserializer(std::byte *input, sign_up &package) {
     return offset;
 }
 
+struct special_signal {
+    enum types : uint8_t {
+        NOT_SIGNED,
+        ALREADY_SIGNED,
+        USER_ALREADY_EXISTS,
+        WRONG_PASSWORD,
+        WEAK_PASSWORD,
+        SIGNED_UP,
+        SIGNED_IN,
+        SIGN_OUT,
+        QUIT,
+        special_signals_amount
+    };
+    types type;
+
+    constexpr special_signal(types const &type) : type(type) {}
+};
+
+constexpr size_t special_signal_size_after_serializer() noexcept {
+    return sizeof(special_signal::type);
+}
+
+size_t special_signal_serializer(std::byte *output, special_signal const &package) {
+    output[0] = static_cast<std::byte>(package.type);
+    return special_signal_size_after_serializer();
+}
+
+size_t special_signal_deserializer(std::byte *input, special_signal &package) {
+    auto type = static_cast<uint8_t>(input[0]);
+    if (type >= static_cast<uint8_t>(special_signal::special_signals_amount)) {
+        return 0;
+    }
+
+    package.type = static_cast<special_signal::types>(type);
+    return special_signal_size_after_serializer();
+}
+
 class package_sender {
 public:
     package_sender() : success_{}, error_{}, buffer_{}, offset_{0}, header_{}, state_{package_state::ready} {}
 
-    void on_success(std::function<void()> success) { success_ = std::move(success); }
+    void on_success(std::function<void()> success) noexcept { success_ = std::move(success); }
 
-    void on_error(std::function<void(std::string_view)> error) { error_ = std::move(error); }
+    void on_error(std::function<void(std::string_view)> error) noexcept { error_ = std::move(error); }
 
     void send_error(std::string_view error) { error_(error); }
 
-    void send_success() { success_(); }
-
-    int set_package(std::variant<message, sign_in, sign_up> const &package) {
+    int set_package(std::variant<message, sign_in, sign_up, special_signal> const &package) {
         if (state_ != package_state::ready) {
             error_("Sender is busy");
             return -1;
@@ -275,17 +310,19 @@ public:
             header_.size = sign_up_size_after_serializer(std::get<sign_up>(package));
             break;
         }
+        case 3: {
+            header_.type = package_type::SIGNAL;
+            header_.size = special_signal_size_after_serializer();
+            break;
         }
-        std::cout << "HEADER.SIZE" << header_.size << std::endl;
+        }
+        debug_fprintf(stdout, "set_package:\n  header.size=%u\n  header.type=%hhu\n", header_.size, header_.type);
 
         if (header_.size > BUFFER_SIZE) {
             error_("Package is too big");
             return -2;
         }
         offset_ = header_serializer(buffer_.data(), header_);
-        std::cout << std::hex << +static_cast<uint8_t>(buffer_[0]) << "_" << +static_cast<uint8_t>(buffer_[1]) << "_"
-                  << +static_cast<uint8_t>(buffer_[2]) << "_" << +static_cast<uint8_t>(buffer_[3]) << "_"
-                  << +static_cast<uint8_t>(buffer_[4]) << std::dec << std::endl;
         switch (package.index()) {
         case 0: {
             message_serializer(buffer_.data() + offset_, std::get<message>(package));
@@ -299,35 +336,34 @@ public:
             sign_up_serializer(buffer_.data() + offset_, std::get<sign_up>(package));
             break;
         }
+        case 3: {
+            special_signal_serializer(buffer_.data() + offset_, std::get<special_signal>(package));
+            break;
+        }
         }
         offset_ = 0;
         state_ = package_state::header_transfering;
         return 0;
     };
 
-    package_state get_state() { return state_; }
+    [[nodiscard]] package_state get_state() const noexcept { return state_; }
 
-    [[nodiscard]] auto buffer() {
-        if (left_to_write() != 0)
-            std::cout << "write " << left_to_write() << std::endl;
-        return asio::buffer(buffer_.data() + offset_, left_to_write());
-    }
+    [[nodiscard]] auto buffer() noexcept { return asio::buffer(buffer_.data() + offset_, left_to_write()); }
 
     void data_transferred(size_t bytes_transferred) {
-        if (bytes_transferred != 0)
-            std::cout << "write-transfered " << bytes_transferred << std::endl;
+        debug_fprintf(stdout, "data_transfered(send):\n  bytes_transfered=%zu\n", bytes_transferred);
         offset_ += bytes_transferred;
         if (state_ == package_state::header_transfering && offset_ >= header_size_after_serializer()) {
             state_ = package_state::body_transfering;
         }
-        if (state_ == package_state::body_transfering && offset_ >= header_size_after_serializer() + header_.size) {
+        if (state_ == package_state::body_transfering && offset_ == header_size_after_serializer() + header_.size) {
             state_ = package_state::ready;
             success_();
         }
     }
 
 private:
-    [[nodiscard]] constexpr size_t left_to_write() const noexcept {
+    [[nodiscard]] size_t left_to_write() const noexcept {
         switch (state_) {
         case package_state::header_transfering:
         case package_state::body_transfering:
@@ -352,74 +388,79 @@ class package_reciever {
 public:
     package_reciever() : success_{}, error_{}, buffer_{}, offset_{0}, header_{}, state_{package_state::header_transfering} {}
 
-    void on_success(std::function<void(std::variant<message, sign_in, sign_up> &&)> success) { success_ = std::move(success); }
+    void on_success(std::function<void(std::variant<message, sign_in, sign_up, special_signal> &&)> success) noexcept {
+        success_ = std::move(success);
+    }
 
-    void on_error(std::function<void(std::string_view)> error) { error_ = std::move(error); }
+    void on_error(std::function<void(std::string_view)> error) noexcept { error_ = std::move(error); }
 
     void send_error(std::string_view error) { error_(error); }
 
-    [[nodiscard]] auto buffer() {
-        if (left_to_read() != 0)
-            std::cout << "read " << left_to_read() << std::endl;
+    [[nodiscard]] auto buffer() noexcept {
         return asio::buffer(buffer_.data() + offset_, std::min(left_to_read(), BUFFER_SIZE - offset_));
     }
 
-    void data_transferred(size_t bytes_transferred) {
-        std::cout << "read-transfered " << bytes_transferred << std::endl;
+    void data_transferred(size_t bytes_transferred) noexcept {
+        debug_fprintf(stdout, "data_transfered(recieve):\n  bytes_transfered=%zu\n", bytes_transferred);
         offset_ += bytes_transferred;
         size_t offset_new = 0;
         while (true) {
             if (state_ == package_state::header_transfering) {
-                std::cout << "header_transferring" << std::endl;
-                std::cout << "old: " << offset_ << " new: " << offset_new << std::endl;
                 if (offset_ - offset_new >= header_size_after_serializer()) {
-                    std::cout << "header_read" << std::endl;
-                    std::cout << std::hex << +static_cast<uint8_t>(buffer_[0]) << "_" << +static_cast<uint8_t>(buffer_[1])
-                              << "_" << +static_cast<uint8_t>(buffer_[2]) << "_" << +static_cast<uint8_t>(buffer_[3]) << "_"
-                              << +static_cast<uint8_t>(buffer_[4]) << std::dec << std::endl;
-                    if (size_t add = header_deserializer(buffer_.data() + offset_new, header_); add == 0) {
-                        error_("Unknown type");
-                        return;
-                    } else {
-                        offset_new += add;
+                    {
+                        size_t add = header_deserializer(buffer_.data() + offset_new, header_);
+                        debug_fprintf(stdout, "data_transfered(recieve):\n  header.size=%u\n  header.type=%hhu\n", header_.size,
+                                      header_.type);
+                        if (add == 0) {
+                            error_("Unknown type");
+                            return;
+                        } else {
+                            offset_new += add;
+                        }
                     }
+
                     if (header_.size > BUFFER_SIZE) {
                         error_("Package is too big");
                         return;
                     }
-                    std::cout << "header_size " << header_.size << std::endl;
                     state_ = package_state::body_transfering;
                 } else {
                     break;
                 }
             }
             if (state_ == package_state::body_transfering && offset_ - offset_new >= header_.size) {
-                std::variant<message, sign_in, sign_up> tmp;
                 switch (header_.type) {
                 case MESSAGE: {
-                    if (size_t add = message_deserializer(buffer_.data() + offset_new, std::get<message>(tmp)); add == 0) {
+                    message tmp;
+                    if (size_t add = message_deserializer(buffer_.data() + offset_new, tmp); add == 0) {
                         error_("Wrong Hash");
                         return;
                     } else {
                         offset_new += add;
-                        std::cout << std::get<message>(tmp).text << std::endl;
+                        debug_fprintf(stdout, "message recieved:\n  %s: %s\n", tmp.name.c_str(), tmp.text.c_str());
                     }
+                    success_(std::move(tmp));
                     break;
                 }
-                case SIGN_IN:
-                    offset_new += sign_in_deserializer(buffer_.data() + offset_new, std::get<sign_in>(tmp));
-                    break;
-
-                case SIGN_UP:
-                    offset_new += sign_up_deserializer(buffer_.data() + offset_new, std::get<sign_up>(tmp));
+                case SIGN_IN: {
+                    sign_in tmp;
+                    offset_new += sign_in_deserializer(buffer_.data() + offset_new, tmp);
+                    success_(std::move(tmp));
                     break;
                 }
-                success_(std::move(tmp));
+                case SIGN_UP: {
+                    sign_up tmp;
+                    offset_new += sign_up_deserializer(buffer_.data() + offset_new, tmp);
+                    success_(std::move(tmp));
+                    break;
+                }
+                default:
+                    break;
+                }
                 state_ = package_state::header_transfering;
             } else {
                 break;
             }
-            std::cout << "old: " << offset_ << "new: " << offset_new << std::endl;
         }
         if (offset_new != 0) {
             for (size_t i = offset_new, j = 0; i < offset_; ++i, ++j) {
@@ -430,7 +471,7 @@ public:
     }
 
 private:
-    [[nodiscard]] constexpr size_t left_to_read() const noexcept {
+    [[nodiscard]] size_t left_to_read() const noexcept {
         switch (state_) {
         case package_state::header_transfering:
             return header_size_after_serializer() - offset_;
@@ -442,7 +483,7 @@ private:
         return 0;
     }
 
-    std::function<void(std::variant<message, sign_in, sign_up> &&)> success_;
+    std::function<void(std::variant<message, sign_in, sign_up, special_signal> &&)> success_;
     std::function<void(std::string_view)> error_;
 
     std::array<std::byte, BUFFER_SIZE> buffer_;

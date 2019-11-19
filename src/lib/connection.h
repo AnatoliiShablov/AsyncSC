@@ -9,7 +9,7 @@
 class client_connection {
 public:
     client_connection(std::function<void()> success_write_handler, std::function<void(std::string_view)> error_write_handler,
-                      std::function<void(std::variant<message, sign_in, sign_up> &&)> success_read_handler,
+                      std::function<void(std::variant<message, sign_in, sign_up, special_signal> &&)> success_read_handler,
                       std::function<void(std::string_view)> error_read_handler, asio::string_view host,
                       asio::string_view service, asio::io_context &io_context)
         : socket_{io_context}, sender_{new package_sender{}}, reciever_{new package_reciever{}} {
@@ -24,7 +24,7 @@ public:
     }
 
     client_connection(std::function<void()> success_write_handler, std::function<void(std::string_view)> error_write_handler,
-                      std::function<void(std::variant<message, sign_in, sign_up> &&)> success_read_handler,
+                      std::function<void(std::variant<message, sign_in, sign_up, special_signal> &&)> success_read_handler,
                       std::function<void(std::string_view)> error_read_handler, asio::ip::tcp::socket &&socket)
         : socket_{std::move(socket)}, sender_{new package_sender{}}, reciever_{new package_reciever{}} {
         reciever_->on_error(std::move(error_read_handler));
@@ -35,7 +35,7 @@ public:
         read_loop();
     }
 
-    void write(std::variant<message, sign_in, sign_up> const &package) {
+    void write(std::variant<message, sign_in, sign_up, special_signal> const &package) {
         std::lock_guard<std::mutex> lock_queue(tasks_m);
         if (write_m.try_lock()) {
             sender_->set_package(package);
@@ -47,7 +47,6 @@ public:
 
 private:
     void read_loop() {
-        std::cout << "inloop" << std::endl;
         socket_.async_read_some(reciever_->buffer(), [this](asio::error_code const &error, size_t bytes_recieved) {
             if (error) {
                 reciever_->send_error(error.message());
@@ -59,7 +58,7 @@ private:
     }
 
     void write_loop() {
-        asio::async_write(socket_, sender_->buffer(), [this](asio::error_code const &error, size_t bytes_sent) {
+        socket_.async_write_some(sender_->buffer(), [this](asio::error_code const &error, size_t bytes_sent) {
             if (error) {
                 sender_->send_error(error.message());
                 write_m.unlock();
@@ -84,7 +83,7 @@ private:
     std::unique_ptr<package_sender> sender_;
     std::unique_ptr<package_reciever> reciever_;
 
-    std::queue<std::variant<message, sign_in, sign_up>> tasks;
+    std::queue<std::variant<message, sign_in, sign_up, special_signal>> tasks;
     std::mutex tasks_m;
     std::mutex write_m;
 };
@@ -104,8 +103,8 @@ public:
 private:
     void accept_loop() {
         acceptor_.async_accept(socket_, [this](asio::error_code const &error) {
-            std::cout << socket_.remote_endpoint().address().to_string() << ":" << socket_.remote_endpoint().port()
-                      << std::endl;
+            debug_fprintf(stdout, "%s:%hu", socket_.remote_endpoint().address().to_string().c_str(),
+                          socket_.remote_endpoint().port());
             if (error) {
                 error_(error.message());
                 decltype(socket_)(std::move(socket_));

@@ -14,10 +14,8 @@ public:
     explicit tcp_server(unsigned short port, asio::io_context &context)
         : max_id{}
         , server{[this](asio::ip::tcp::socket &&new_user) {
-                     std::fprintf(stdout, "New connection\n");
-                     std::fflush(stdout);
-                     counter[++max_id] = std::make_pair(0, 0);
-                     std::cout << "USERS ID=" << max_id << std::endl;
+                     debug_fprintf(stdout, "New connection with id %u\n", ++max_id);
+                     counter[max_id] = std::make_pair(0, 0);
                      users.emplace(max_id,
                                    new client_connection{
                                        std::bind(&tcp_server::success_write_handler, this, max_id),
@@ -28,86 +26,101 @@ public:
                  },
                  [this](std::string_view error_message) {
                      std::fprintf(stderr, "%.*s\n", static_cast<int>(error_message.size()), error_message.data());
-                     std::fflush(stderr);
                  },
                  port, context} {}
 
 private:
     void success_write_handler(size_t id) {
-        std::fprintf(stdout, "successfully written (id : %5zu) : %5zu packages\n", id, ++counter[id].first);
-        std::cout << "USERS ID(WRITE)=" << id << std::endl;
-        std::fflush(stdout);
+        debug_fprintf(stdout, "Successfully written (id : %5zu) : %5zu packages\n", id, ++counter[id].first);
     }
 
     void error_write_handler(size_t id, std::string_view error_message) {
-        std::fprintf(stderr, "Write error on id : %5zu\n%.*s\n", id, static_cast<int>(error_message.size()),
-                     error_message.data());
-        std::fflush(stderr);
+        std::fprintf(stderr, "Write error : %5zu\n%.*s\n", id, static_cast<int>(error_message.size()), error_message.data());
         counter.erase(id);
         connected_users.erase(id);
         users.erase(id);
     }
 
-    void success_read_handler(size_t id, std::variant<message, sign_in, sign_up> &&package) {
-        std::fprintf(stdout, "successfully read (id : %5zu) : %5zu packages\n", id, ++counter[id].second);
-        std::fflush(stdout);
-        std::cout << "USERS ID(READ)=" << id << std::endl;
-        if (!connected_users.count(id) && package.index() == 0) {
-            std::fprintf(stderr, "User on id : %5zu isn't signed\n", id);
-            std::fflush(stderr);
-            message signal{"admin", "You\'re not signed"};
-            users[id]->write(signal);
-            return;
-        }
-        if (connected_users.count(id) && package.index() != 0) {
-            std::fprintf(stderr, "User on id : %5zu already signed\n", id);
-            std::fflush(stderr);
-            message signal{"admin", "You\'re already signed"};
-            users[id]->write(signal);
-            return;
-        }
-        if (package.index() == 0) {
-            for (auto &connection : users) {
-                if (connected_users.count(connection.first) && connection.first != id) {
-                    connection.second->write(package);
+    void success_read_handler(size_t id, std::variant<message, sign_in, sign_up, special_signal> &&package) {
+        debug_fprintf(stdout, "Successfully read (id : %5zu) : %5zu packages\n", id, ++counter[id].second);
+        switch (package.index()) {
+        case 0: {
+            if (connected_users.count(id)) {
+                for (auto &connection : users) {
+                    if (connected_users.count(connection.first) && connection.first != id) {
+                        connection.second->write(package);
+                    }
                 }
-            }
-        }
-        if (package.index() == 1) {
-            sign_in tmp = std::move(std::get<sign_in>(package));
-            if (users_base[tmp.name] == tmp.password) {
-                connected_users[id] = tmp.name;
             } else {
-                std::fprintf(stderr, "User on id : %5zu wrong password\n", id);
-                std::fflush(stderr);
-                message signal{"admin", "Wrong password"};
-                users[id]->write(signal);
+                std::fprintf(stderr, "User isn't signed (id : %5zu)\n", id);
+                users[id]->write(special_signal::NOT_SIGNED);
             }
+            return;
         }
-        if (package.index() == 2) {
-            sign_up tmp = std::move(std::get<sign_up>(package));
-            if (users_base.count(tmp.name)) {
-                std::fprintf(stderr, "User on id : %5zu such user already exists\n", id);
-                std::fflush(stderr);
-                message signal{"admin", "Such user already exists"};
-                users[id]->write(signal);
-            } else {
-                if (tmp.password.length() < 5) {
-                    std::fprintf(stderr, "User on id : %5zu Password is too simple\n", id);
-                    std::fflush(stderr);
-                    message signal{"admin", "Password should be 5 or more symbols"};
-                    users[id]->write(signal);
+        case 1: {
+            if (!connected_users.count(id)) {
+                sign_in tmp = std::move(std::get<sign_in>(package));
+                if (users_base.count(tmp.name) && users_base[tmp.name] == tmp.password) {
+                    connected_users[id] = tmp.name;
                 } else {
-                    users_base[tmp.name] = tmp.password;
+                    std::fprintf(stderr, "Wrong password(id : %5zu)\n", id);
+                    users[id]->write(special_signal::WRONG_PASSWORD);
                 }
+            } else {
+                std::fprintf(stderr, "Already signed (id : %5zu)\n", id);
+                users[id]->write(special_signal::ALREADY_SIGNED);
             }
+            return;
         }
+        case 2: {
+            if (!connected_users.count(id)) {
+                sign_up tmp = std::move(std::get<sign_up>(package));
+                if (users_base.count(tmp.name)) {
+                    debug_fprintf(stdout, "Such user already exists (id : %5zu)\n", id);
+                    users[id]->write(special_signal::USER_ALREADY_EXISTS);
+                } else {
+                    if (tmp.password.length() < 5) {
+                        debug_fprintf(stdout, "Password is simple (id : %5zu)\n", id);
+                        users[id]->write(special_signal::WEAK_PASSWORD);
+                    } else {
+                        users_base[tmp.name] = tmp.password;
+                        users[id]->write(special_signal::SIGNED_UP);
+                        debug_fprintf(stdout, "Successfully registered (id : %5zu) with name : %s\n", id, tmp.name.c_str());
+                    }
+                }
+            } else {
+                std::fprintf(stderr, "Already signed (id : %5zu)\n", id);
+                users[id]->write(special_signal::ALREADY_SIGNED);
+            }
+            return;
+        }
+        case 3: {
+            switch (std::get<special_signal>(package).type) {
+            case special_signal::QUIT: {
+                debug_fprintf(stdout, "Log out (id : %5zu)\n", id);
+                counter.erase(id);
+                connected_users.erase(id);
+                users.erase(id);
+                break;
+            }
+            case special_signal::SIGN_OUT: {
+                debug_fprintf(stdout, "Log out (id : %5zu)\n", id);
+                connected_users.erase(id);
+                break;
+            }
+            default: {
+                std::fprintf(stderr, "Strange siganl (id : %5zu)\n", id);
+            }
+            }
+            return;
+        }
+        }
+        std::fprintf(stderr, "Something wrong with variant\n");
     }
 
     void error_read_handler(size_t id, std::string_view error_message) {
         std::fprintf(stderr, "Read error on id : %5zu\n%.*s\n", id, static_cast<int>(error_message.size()),
                      error_message.data());
-        std::fflush(stderr);
         users.erase(id);
         counter.erase(id);
         connected_users.erase(id);
