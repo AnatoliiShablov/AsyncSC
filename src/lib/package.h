@@ -11,7 +11,7 @@
 
 size_t const BUFFER_SIZE = 16 * 1024;  // 16 KB
 
-enum package_type : uint8_t { MESSAGE, SIGN_IN, SIGN_UP };
+enum package_type : uint8_t { MESSAGE, SIGNAL, SIGN_IN, SIGN_UP, states_amount };
 enum class package_state : uint8_t { header_transfering, body_transfering, ready };
 
 uint32_t hash(std::string const &str) {
@@ -50,7 +50,7 @@ size_t header_deserializer(std::byte *input, header &head) {
                 static_cast<uint32_t>(input[2]) << UINT32_C(8) | static_cast<uint32_t>(input[3]) << UINT32_C(0);
 
     auto type = static_cast<uint8_t>(input[4]);
-    if (type > 2) {
+    if (type >= static_cast<uint8_t>(package_type::states_amount)) {
         return 0;
     }
 

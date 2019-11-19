@@ -7,6 +7,10 @@ execute_process(COMMAND conan install ${CMAKE_CURRENT_SOURCE_DIR} WORKING_DIRECT
 include(${CMAKE_CURRENT_BINARY_DIR}/conan_paths.cmake)
 
 find_package(asio REQUIRED)
+find_package(OpenGL REQUIRED)
+find_package(GLUT REQUIRED)
+find_package(PkgConfig REQUIRED)
+pkg_search_module(GLFW REQUIRED glfw3)
 
 add_library(package_lib
         src/lib/package.h
@@ -38,6 +42,6 @@ target_include_directories(AsyncServer PUBLIC ${ASIO_INCLUDE_DIRS})
 
 
 add_executable(AsyncClient src/client.cpp)
-target_link_libraries(AsyncClient asio::asio package_lib connection_lib)
-target_include_directories(AsyncClient PUBLIC ${ASIO_INCLUDE_DIRS})
+target_link_libraries(AsyncClient asio::asio package_lib connection_lib ${OPENGL_LIBRARIES} ${GLUT_LIBRARY} ${GLFW_LIBRARIES})
+target_include_directories(AsyncClient PUBLIC ${ASIO_INCLUDE_DIRS} ${OPENGL_INCLUDE_DIRS} ${GLUT_INCLUDE_DIRS} ${GLFW_INCLUDE_DIRS})
 # written [ ]      tested [ ]
