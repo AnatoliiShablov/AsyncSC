@@ -22,12 +22,12 @@ private:
 
     void error_read_handler(size_t id, std::string_view error_message);
 
-    std::unordered_map<uint32_t, std::unique_ptr<client_connection>> users;
-    std::unordered_map<uint32_t, std::string> connected_users;
+    std::unordered_map<size_t, std::unique_ptr<client_connection>> users;
+    std::unordered_map<size_t, std::string> connected_users;
     std::unordered_map<std::string, std::string> users_base;
 
-    std::unordered_map<uint32_t, std::pair<size_t, size_t>> counter;
-    uint32_t max_id;
+    std::unordered_map<size_t, std::pair<size_t, size_t>> counter;
+    size_t max_id;
 
     server_connection server;
 };

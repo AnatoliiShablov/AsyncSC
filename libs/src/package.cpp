@@ -1,9 +1,11 @@
-#include "package.h"
+#include "../include/package.h"
 
 #ifdef DEBUG_OUTPUT
 #define debug_fprintf(...) fprintf(...)
 #else
-#define debug_fprintf(...) do{}while(0)
+#define debug_fprintf(...) \
+    do {                   \
+    } while (0)
 #endif
 
 uint32_t hash(std::string const &str) noexcept {
@@ -55,8 +57,8 @@ size_t message_size_after_serializer(message const &package) noexcept {
 }
 
 size_t message_serializer(std::byte *output, message const &package) {
-    uint32_t name_length = package.name.length();
-    uint32_t text_length = package.text.length();
+    uint32_t name_length = static_cast<uint32_t>(package.name.length());
+    uint32_t text_length = static_cast<uint32_t>(package.text.length());
     uint32_t hash = message_hash(package);
 
     output[0] = static_cast<std::byte>((name_length & UINT32_C(0xff000000)) >> UINT32_C(24));
@@ -114,8 +116,8 @@ size_t sign_in_size_after_serializer(sign_in const &package) noexcept {
 }
 
 size_t sign_in_serializer(std::byte *output, sign_in const &package) {
-    uint32_t name_length = package.name.length();
-    uint32_t password_length = package.password.length();
+    uint32_t name_length = static_cast<uint32_t>(package.name.length());
+    uint32_t password_length = static_cast<uint32_t>(package.password.length());
 
     output[0] = static_cast<std::byte>((name_length & UINT32_C(0xff000000)) >> UINT32_C(24));
     output[1] = static_cast<std::byte>((name_length & UINT32_C(0x00ff0000)) >> UINT32_C(16));
@@ -166,8 +168,8 @@ size_t sign_up_size_after_serializer(sign_up const &package) noexcept {
 }
 
 size_t sign_up_serializer(std::byte *output, sign_up const &package) {
-    uint32_t name_length = package.name.length();
-    uint32_t password_length = package.password.length();
+    uint32_t name_length = static_cast<uint32_t>(package.name.length());
+    uint32_t password_length = static_cast<uint32_t>(package.password.length());
 
     output[0] = static_cast<std::byte>((name_length & UINT32_C(0xff000000)) >> UINT32_C(24));
     output[1] = static_cast<std::byte>((name_length & UINT32_C(0x00ff0000)) >> UINT32_C(16));
@@ -213,7 +215,7 @@ size_t sign_up_deserializer(std::byte *input, sign_up &package) {
     return offset;
 }
 
-constexpr special_signal::special_signal(special_signal::types type) : type{type} {}
+special_signal::special_signal(special_signal::types type) : type{type} {}
 
 constexpr size_t special_signal_size_after_serializer() noexcept {
     return sizeof(special_signal::type);
@@ -256,22 +258,22 @@ int package_sender::set_package(std::variant<message, sign_in, sign_up, special_
     switch (package.index()) {
     case 0: {
         header_.type = package_type::MESSAGE;
-        header_.size = message_size_after_serializer(std::get<message>(package));
+        header_.size = static_cast<uint32_t>(message_size_after_serializer(std::get<message>(package)));
         break;
     }
     case 1: {
         header_.type = package_type::SIGN_IN;
-        header_.size = sign_in_size_after_serializer(std::get<sign_in>(package));
+        header_.size = static_cast<uint32_t>(sign_in_size_after_serializer(std::get<sign_in>(package)));
         break;
     }
     case 2: {
         header_.type = package_type::SIGN_UP;
-        header_.size = sign_up_size_after_serializer(std::get<sign_up>(package));
+        header_.size = static_cast<uint32_t>(sign_up_size_after_serializer(std::get<sign_up>(package)));
         break;
     }
     case 3: {
         header_.type = package_type::SPECIAL_SIGNAL;
-        header_.size = special_signal_size_after_serializer();
+        header_.size = static_cast<uint32_t>(special_signal_size_after_serializer());
         break;
     }
     }

@@ -1,6 +1,4 @@
-#include "lib/tcp_server.h"
-
-
+#include "../libs/include/tcp_server.h"
 
 int main() {
     asio::io_context io_context;

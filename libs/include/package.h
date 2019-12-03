@@ -78,7 +78,7 @@ struct special_signal {
     };
     types type;
 
-    constexpr explicit special_signal(types type = special_signal::special_signals_amount);
+    special_signal(types type = special_signal::special_signals_amount);
 };
 
 constexpr size_t special_signal_size_after_serializer() noexcept;
@@ -114,6 +114,7 @@ private:
     header header_;
 
     package_state state_;
+
 public:
     using buffer_t = decltype(asio::buffer(buffer_.data() + 0, 0));
 
@@ -143,6 +144,7 @@ private:
     header header_;
 
     package_state state_;
+
 public:
     using buffer_t = decltype(asio::buffer(buffer_.data() + 0, 0));
 

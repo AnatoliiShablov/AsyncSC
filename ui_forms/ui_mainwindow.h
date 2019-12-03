@@ -25,8 +25,7 @@
 
 QT_BEGIN_NAMESPACE
 
-class Ui_MainWindow
-{
+class Ui_MainWindow {
 public:
     QWidget *centralwidget;
     QVBoxLayout *verticalLayout;
@@ -39,6 +38,7 @@ public:
     QHBoxLayout *buttons_layout;
     QPushButton *signin_button;
     QPushButton *signup_button;
+    QLabel *additional_info;
     QSpacerItem *spacer;
     QWidget *dialog_page;
     QVBoxLayout *verticalLayout_3;
@@ -48,8 +48,7 @@ public:
     QPushButton *pushButton;
     QStatusBar *statusbar;
 
-    void setupUi(QMainWindow *MainWindow)
-    {
+    void setupUi(QMainWindow *MainWindow) {
         if (MainWindow->objectName().isEmpty())
             MainWindow->setObjectName(QString::fromUtf8("MainWindow"));
         MainWindow->resize(400, 600);
@@ -104,8 +103,13 @@ public:
 
         buttons_layout->addWidget(signup_button);
 
-
         verticalLayout_2->addLayout(buttons_layout);
+
+        additional_info = new QLabel(sign_page);
+        additional_info->setObjectName(QString::fromUtf8("additional_info"));
+        additional_info->setAlignment(Qt::AlignCenter);
+
+        verticalLayout_2->addWidget(additional_info);
 
         spacer = new QSpacerItem(20, 40, QSizePolicy::Minimum, QSizePolicy::Expanding);
 
@@ -148,7 +152,6 @@ public:
 
         horizontalLayout->addWidget(pushButton);
 
-
         verticalLayout_3->addLayout(horizontalLayout);
 
         multi_form->addWidget(dialog_page);
@@ -162,27 +165,25 @@ public:
 
         retranslateUi(MainWindow);
 
-        multi_form->setCurrentIndex(1);
-
+        multi_form->setCurrentIndex(0);
 
         QMetaObject::connectSlotsByName(MainWindow);
-    } // setupUi
+    }  // setupUi
 
-    void retranslateUi(QMainWindow *MainWindow)
-    {
+    void retranslateUi(QMainWindow *MainWindow) {
         MainWindow->setWindowTitle(QCoreApplication::translate("MainWindow", "MainWindow", nullptr));
         nice_text->setText(QCoreApplication::translate("MainWindow", "Sign IN / Sign UP", nullptr));
         signin_button->setText(QCoreApplication::translate("MainWindow", "Sign In", nullptr));
         signup_button->setText(QCoreApplication::translate("MainWindow", "Sign Up", nullptr));
+        additional_info->setText(QCoreApplication::translate("MainWindow", "Nothing", nullptr));
         pushButton->setText(QCoreApplication::translate("MainWindow", "Send", nullptr));
-    } // retranslateUi
-
+    }  // retranslateUi
 };
 
 namespace Ui {
-    class MainWindow: public Ui_MainWindow {};
-} // namespace Ui
+class MainWindow: public Ui_MainWindow {};
+}  // namespace Ui
 
 QT_END_NAMESPACE
 
-#endif // UI_MAINWINDOW_H
+#endif  // UI_MAINWINDOW_H

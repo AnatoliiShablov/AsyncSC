@@ -1,9 +1,11 @@
-#include "connection.h"
+#include "../include/connection.h"
 
 #ifdef DEBUG_OUTPUT
 #define debug_fprintf(...) fprintf(...)
 #else
-#define debug_fprintf(...) do{}while(0)
+#define debug_fprintf(...) \
+    do {                   \
+    } while (0)
 #endif
 
 client_connection::client_connection(

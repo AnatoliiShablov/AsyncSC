@@ -18,7 +18,7 @@
     <item>
      <widget class="QStackedWidget" name="multi_form">
       <property name="currentIndex">
-       <number>1</number>
+       <number>0</number>
       </property>
       <widget class="QWidget" name="sign_page">
        <layout class="QVBoxLayout" name="verticalLayout_2">
@@ -74,6 +74,16 @@
            </widget>
           </item>
          </layout>
+        </item>
+        <item>
+         <widget class="QLabel" name="additional_info">
+          <property name="text">
+           <string>Nothing</string>
+          </property>
+          <property name="alignment">
+           <set>Qt::AlignCenter</set>
+          </property>
+         </widget>
         </item>
         <item>
          <spacer name="spacer">
