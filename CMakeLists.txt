@@ -37,16 +37,16 @@ target_link_libraries(connection_lib ${LIBRARIES_SERVER} package_lib)
 target_include_directories(connection_lib PUBLIC ${ASIO_INCLUDE_DIRS})
 # written [✓]      tested [✓]
 
-add_library(server_tcp_lib 
-        libs/include/tcp_server.cpp
-        libs/src/tcp_server.h)
+add_library(server_tcp_lib
+        libs/include/tcp_server.h
+        libs/src/tcp_server.cpp)
 target_link_libraries(server_tcp_lib ${LIBRARIES_SERVER} package_lib connection_lib)
 target_include_directories(server_tcp_lib PUBLIC ${ASIO_INCLUDE_DIRS})
 # written [✓]      tested [✓]
 
-add_executable(AsyncServer src/server.cpp)
-target_link_libraries(AsyncServer ${LIBRARIES_SERVER} server_tcp_lib connection_lib package_lib)
-target_include_directories(AsyncServer PUBLIC ${ASIO_INCLUDE_DIRS})
+add_executable(FireFly_server src/server.cpp)
+target_link_libraries(FireFly_server ${LIBRARIES_SERVER} server_tcp_lib connection_lib package_lib)
+target_include_directories(FireFly_server PUBLIC ${ASIO_INCLUDE_DIRS})
 # written [✓]      tested [✓]
 
 
