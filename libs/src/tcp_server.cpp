@@ -1,5 +1,11 @@
 #include "tcp_server.h"
 
+#ifdef DEBUG_OUTPUT
+#define debug_fprintf(...) fprintf(...)
+#else
+#define debug_fprintf(...) do{}while(0)
+#endif
+
 tcp_server::tcp_server(unsigned short port, asio::io_context &context)
     : max_id{}
     , server{[this](asio::ip::tcp::socket &&new_user) {
@@ -40,7 +46,7 @@ void tcp_server::success_read_handler(size_t id, std::variant<message, sign_in, 
             }
         } else {
             std::fprintf(stderr, "User isn't signed (id : %5zu)\n", id);
-            users[id]->write(special_signal::NOT_SIGNED);
+            users[id]->write(special_signal(special_signal::NOT_SIGNED));
         }
         return;
     }
@@ -51,11 +57,11 @@ void tcp_server::success_read_handler(size_t id, std::variant<message, sign_in, 
                 connected_users[id] = tmp.name;
             } else {
                 std::fprintf(stderr, "Wrong password(id : %5zu)\n", id);
-                users[id]->write(special_signal::WRONG_PASSWORD);
+                users[id]->write(special_signal(special_signal::WRONG_PASSWORD));
             }
         } else {
             std::fprintf(stderr, "Already signed (id : %5zu)\n", id);
-            users[id]->write(special_signal::ALREADY_SIGNED);
+            users[id]->write(special_signal(special_signal::ALREADY_SIGNED));
         }
         return;
     }
@@ -64,20 +70,20 @@ void tcp_server::success_read_handler(size_t id, std::variant<message, sign_in, 
             sign_up tmp = std::move(std::get<sign_up>(package));
             if (users_base.count(tmp.name)) {
                 debug_fprintf(stdout, "Such user already exists (id : %5zu)\n", id);
-                users[id]->write(special_signal::USER_ALREADY_EXISTS);
+                users[id]->write(special_signal(special_signal::USER_ALREADY_EXISTS));
             } else {
                 if (tmp.password.length() < 5) {
                     debug_fprintf(stdout, "Password is simple (id : %5zu)\n", id);
-                    users[id]->write(special_signal::WEAK_PASSWORD);
+                    users[id]->write(special_signal(special_signal::WEAK_PASSWORD));
                 } else {
                     users_base[tmp.name] = tmp.password;
-                    users[id]->write(special_signal::SIGNED_UP);
+                    users[id]->write(special_signal(special_signal::SIGNED_UP));
                     debug_fprintf(stdout, "Successfully registered (id : %5zu) with name : %s\n", id, tmp.name.c_str());
                 }
             }
         } else {
             std::fprintf(stderr, "Already signed (id : %5zu)\n", id);
-            users[id]->write(special_signal::ALREADY_SIGNED);
+            users[id]->write(special_signal(special_signal::ALREADY_SIGNED));
         }
         return;
     }

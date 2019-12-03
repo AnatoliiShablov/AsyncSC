@@ -101,8 +101,6 @@ public:
 
     [[nodiscard]] package_state get_state() const noexcept;
 
-    [[nodiscard]] auto buffer() noexcept;
-
     void data_transferred(size_t bytes_transferred);
 
 private:
@@ -116,6 +114,10 @@ private:
     header header_;
 
     package_state state_;
+public:
+    using buffer_t = decltype(asio::buffer(buffer_.data() + 0, 0));
+
+    [[nodiscard]] buffer_t buffer() noexcept;
 };
 
 class package_reciever {
@@ -127,8 +129,6 @@ public:
     void on_error(std::function<void(std::string_view)> error) noexcept;
 
     void send_error(std::string_view error);
-
-    [[nodiscard]] auto buffer() noexcept;
 
     void data_transferred(size_t bytes_transferred) noexcept;
 
@@ -143,6 +143,10 @@ private:
     header header_;
 
     package_state state_;
+public:
+    using buffer_t = decltype(asio::buffer(buffer_.data() + 0, 0));
+
+    [[nodiscard]] buffer_t buffer() noexcept;
 };
 
 #endif  // ASYNCSC_PACKAGE_H

@@ -1,5 +1,11 @@
 #include "connection.h"
 
+#ifdef DEBUG_OUTPUT
+#define debug_fprintf(...) fprintf(...)
+#else
+#define debug_fprintf(...) do{}while(0)
+#endif
+
 client_connection::client_connection(
     std::function<void()> success_write_handler, std::function<void(std::string_view)> error_write_handler,
     std::function<void(std::variant<message, sign_in, sign_up, special_signal> &&)> success_read_handler,

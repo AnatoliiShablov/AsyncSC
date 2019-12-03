@@ -1,5 +1,11 @@
 #include "package.h"
 
+#ifdef DEBUG_OUTPUT
+#define debug_fprintf(...) fprintf(...)
+#else
+#define debug_fprintf(...) do{}while(0)
+#endif
+
 uint32_t hash(std::string const &str) noexcept {
     uint32_t hash_ = 0;
     uint32_t mult = 1;
@@ -303,7 +309,7 @@ package_state package_sender::get_state() const noexcept {
     return state_;
 }
 
-auto package_sender::buffer() noexcept {
+package_sender::buffer_t package_sender::buffer() noexcept {
     return asio::buffer(buffer_.data() + offset_, left_to_write());
 }
 
@@ -346,7 +352,7 @@ void package_reciever::send_error(std::string_view error) {
     error_(error);
 }
 
-auto package_reciever::buffer() noexcept {
+package_reciever::buffer_t package_reciever::buffer() noexcept {
     return asio::buffer(buffer_.data() + offset_, std::min(left_to_read(), BUFFER_SIZE - offset_));
 }
 
