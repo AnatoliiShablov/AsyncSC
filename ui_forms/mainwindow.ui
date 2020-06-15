@@ -39,6 +39,9 @@
             <bold>true</bold>
            </font>
           </property>
+          <property name="styleSheet">
+           <string notr="true">background-color: rgb(255, 255, 255);</string>
+          </property>
           <property name="text">
            <string>Sign IN / Sign UP</string>
           </property>
